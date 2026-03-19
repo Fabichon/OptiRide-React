@@ -25,6 +25,30 @@ if (typeof globalThis.queueMicrotask === 'undefined') {
 	}) as typeof globalThis.queueMicrotask;
 }
 
+if (typeof globalThis.setImmediate === 'undefined') {
+	const immediateTimers = new Map<number, ReturnType<typeof setTimeout>>();
+	let immediateId = 0;
+
+	globalThis.setImmediate = ((callback: (...args: unknown[]) => void, ...args: unknown[]) => {
+		immediateId += 1;
+		const currentId = immediateId;
+		const timer = setTimeout(() => {
+			immediateTimers.delete(currentId);
+			callback(...args);
+		}, 0);
+		immediateTimers.set(currentId, timer);
+		return currentId;
+	}) as typeof globalThis.setImmediate;
+
+	globalThis.clearImmediate = ((id: number) => {
+		const timer = immediateTimers.get(id);
+		if (timer) {
+			clearTimeout(timer);
+			immediateTimers.delete(id);
+		}
+	}) as typeof globalThis.clearImmediate;
+}
+
 require('./src/polyfills/formData');
 
 const { registerRootComponent } = require('expo');

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -25,9 +25,8 @@ import { Colors, Shadows } from '../constants';
 import { GlassView } from '../components/ui/GlassView';
 import { OptiRideSelection } from '../components/ride/OptiRideSelection';
 import { RideCard } from '../components/ride/RideCard';
-import { TRIPS } from '../data';
 import { sortRides, filterByCategory, getOptiRideSelection } from '../services/rideComparator';
-import { generateMockRides } from '../services/mockRideGenerator';
+import { fetchTripRides } from '../services/rideApi';
 import { useAppStore } from '../store/useAppStore';
 import type { Ride, Trip } from '../types';
 
@@ -56,13 +55,45 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [catDropOpen, setCatDropOpen] = useState(false);
+  const [trip, setTrip] = useState<(Trip & { label?: string; address?: string }) | null>(null);
 
-  const trip: (Trip & { label?: string; address?: string }) | null = useMemo(() => {
-    if (tripKey === '__dynamic__' && dynamicTrip) {
-      return generateMockRides(dynamicTrip.latitude, dynamicTrip.longitude, dynamicTrip.to);
-    }
-    return TRIPS[tripKey] || null;
+  const REFRESH_INTERVAL = 30_000; // 30s — prices change in real-time
+
+  // Fetch rides via API service (falls back to mock if backend unavailable)
+  const loadRides = useCallback(async () => {
+    const result = await fetchTripRides(tripKey);
+    return result;
   }, [tripKey, dynamicTrip]);
+
+  // Initial fetch + auto-refresh every 30s
+  useEffect(() => {
+    let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval>;
+
+    // Initial load
+    (async () => {
+      const result = await loadRides();
+      if (!cancelled) setTrip(result);
+    })();
+
+    // Refresh prices periodically (silent — no loading state to avoid UI flicker)
+    intervalId = setInterval(async () => {
+      if (cancelled) return;
+      const result = await loadRides();
+      if (!cancelled && result) {
+        setTrip((prev) => {
+          if (!prev) return result;
+          // Merge: keep trip metadata, update rides with fresh prices
+          return { ...prev, rides: result.rides };
+        });
+      }
+    }, REFRESH_INTERVAL);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [loadRides]);
 
   const sortMode = useAppStore((s) => s.sortMode);
   const categoryFilter = useAppStore((s) => s.categoryFilter);
@@ -238,7 +269,7 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
 
       {/* ═══ BOTTOM SHEET ═══ */}
       {!loading && (
-        <Animated.View style={[styles.bottomSheet, { maxHeight: sheetMaxHeight }, sheetStyle]}>
+        <Animated.View style={[styles.bottomSheet, expanded ? { height: sheetMaxHeight } : { maxHeight: sheetMaxHeight }, sheetStyle]}>
           {/* Drag handle */}
           <Pressable onPress={() => setExpanded((e) => !e)} style={styles.dragHandle}>
             <View style={styles.dragHandleBar} />

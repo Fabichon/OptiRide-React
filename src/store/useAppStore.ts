@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { SortMode, ProviderStatus } from '../types';
+import type { SortMode, ProviderStatus, ProviderToken } from '../types';
 
 interface Preferences {
   pushNotifs: boolean;
@@ -34,9 +34,12 @@ interface AppState {
   setSelectedRide: (id: number | null) => void;
   setDynamicTrip: (trip: DynamicTrip | null) => void;
 
-  // Accounts
+  // Accounts & provider tokens
   providerStatus: Record<string, ProviderStatus>;
+  providerTokens: Record<string, ProviderToken>;
   setProviderStatus: (id: string, status: ProviderStatus) => void;
+  setProviderToken: (id: string, token: ProviderToken | null) => void;
+  getConnectedProviderIds: () => string[];
 
   // Preferences
   preferences: Preferences;
@@ -67,7 +70,7 @@ const INITIAL_PROVIDER_STATUS: Record<string, ProviderStatus> = {
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get): AppState => ({
       // Trip (ephemeral)
       selectedTrip: null,
       sortMode: 'cheap',
@@ -80,12 +83,28 @@ export const useAppStore = create<AppState>()(
       setSelectedRide: (id) => set({ selectedRideId: id }),
       setDynamicTrip: (trip) => set({ dynamicTrip: trip }),
 
-      // Accounts
+      // Accounts & provider tokens
       providerStatus: INITIAL_PROVIDER_STATUS,
+      providerTokens: {},
       setProviderStatus: (id, status) =>
         set((state) => ({
           providerStatus: { ...state.providerStatus, [id]: status },
         })),
+      setProviderToken: (id, token) =>
+        set((state) => {
+          const providerTokens = { ...state.providerTokens };
+          if (token) {
+            providerTokens[id] = token;
+          } else {
+            delete providerTokens[id];
+          }
+          return { providerTokens };
+        }),
+      getConnectedProviderIds: (): string[] => {
+        return Object.entries(get().providerStatus)
+          .filter(([, status]) => status === 'connected')
+          .map(([id]) => id);
+      },
 
       // Preferences
       preferences: {
@@ -97,18 +116,18 @@ export const useAppStore = create<AppState>()(
         shareAnon: false,
         historique: true,
       },
-      updatePreference: (key, value) =>
+      updatePreference: <K extends keyof Preferences>(key: K, value: Preferences[K]) =>
         set((state) => ({
           preferences: { ...state.preferences, [key]: value },
         })),
 
       // Drawer action
       pendingDrawerAction: null,
-      setPendingDrawerAction: (action) => set({ pendingDrawerAction: action }),
+      setPendingDrawerAction: (action: string | null) => set({ pendingDrawerAction: action }),
 
       // Redirect
       dontShowRedirect: {},
-      setDontShowRedirect: (provider) =>
+      setDontShowRedirect: (provider: string) =>
         set((state) => ({
           dontShowRedirect: { ...state.dontShowRedirect, [provider]: true },
         })),
@@ -123,8 +142,9 @@ export const useAppStore = create<AppState>()(
     {
       name: 'optiride-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
+      partialize: (state): Partial<AppState> => ({
         providerStatus: state.providerStatus,
+        providerTokens: state.providerTokens,
         preferences: state.preferences,
         dontShowRedirect: state.dontShowRedirect,
       }),

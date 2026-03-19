@@ -6,6 +6,7 @@ import { Colors, Shadows } from '../constants';
 import { VTC_PROVIDERS } from '../data';
 import { useAppStore } from '../store/useAppStore';
 import { openProviderStore } from '../services/deepLink';
+import { connectProvider, disconnectProvider } from '../services/rideApi';
 import type { ProviderStatus } from '../types';
 
 interface AccountsScreenProps {
@@ -16,6 +17,8 @@ export function AccountsScreen({ onBack }: AccountsScreenProps) {
   const insets = useSafeAreaInsets();
   const providerStatus = useAppStore((s) => s.providerStatus);
   const setProviderStatus = useAppStore((s) => s.setProviderStatus);
+  const setProviderToken = useAppStore((s) => s.setProviderToken);
+  const providerTokens = useAppStore((s) => s.providerTokens);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
 
   // Fallback: if provider id not in store (e.g. persisted data mismatch), treat as not_installed
@@ -28,9 +31,21 @@ export function AccountsScreen({ onBack }: AccountsScreenProps) {
 
   const handleConnect = async (id: string) => {
     setLoading((prev) => ({ ...prev, [id]: true }));
-    await new Promise((r) => setTimeout(r, 1400));
-    setProviderStatus(id, 'connected');
-    setLoading((prev) => ({ ...prev, [id]: false }));
+    try {
+      // Calls backend OAuth flow (or mock fallback for now)
+      const tokenData = await connectProvider(id);
+      setProviderToken(id, {
+        accessToken: tokenData.accessToken,
+        refreshToken: tokenData.refreshToken,
+        expiresAt: tokenData.expiresAt,
+        email: tokenData.email,
+      });
+      setProviderStatus(id, 'connected');
+    } catch {
+      Alert.alert('Erreur', 'Impossible de connecter ce compte. Réessayez.');
+    } finally {
+      setLoading((prev) => ({ ...prev, [id]: false }));
+    }
   };
 
   const handleDisconnect = (id: string, name: string) => {
@@ -44,9 +59,14 @@ export function AccountsScreen({ onBack }: AccountsScreenProps) {
           style: 'destructive',
           onPress: async () => {
             setLoading((prev) => ({ ...prev, [id]: true }));
-            await new Promise((r) => setTimeout(r, 900));
-            setProviderStatus(id, 'disconnected');
-            setLoading((prev) => ({ ...prev, [id]: false }));
+            try {
+              await disconnectProvider(id);
+            } finally {
+              // Clear token & status even if API fails
+              setProviderToken(id, null);
+              setProviderStatus(id, 'disconnected');
+              setLoading((prev) => ({ ...prev, [id]: false }));
+            }
           },
         },
       ]
@@ -62,8 +82,8 @@ export function AccountsScreen({ onBack }: AccountsScreenProps) {
       <ProviderAvatar letter={provider.letter} color={provider.color} size={44} />
       <View style={styles.cardInfo}>
         <Text style={styles.cardName}>{provider.name}</Text>
-        {status === 'connected' && provider.account && (
-          <Text style={styles.cardEmail}>{provider.account}</Text>
+        {status === 'connected' && (providerTokens[provider.id]?.email || provider.account) && (
+          <Text style={styles.cardEmail}>{providerTokens[provider.id]?.email || provider.account}</Text>
         )}
       </View>
       {loading[provider.id] ? (

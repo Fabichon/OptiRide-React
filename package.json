@@ -5,6 +5,8 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
+    "android:go": "powershell -ExecutionPolicy Bypass -File ./scripts/start-android-expo.ps1 -Port 8081 -Clear",
+    "android:go:fast": "powershell -ExecutionPolicy Bypass -File ./scripts/start-android-expo.ps1 -Port 8081",
     "ios": "expo run:ios",
     "web": "expo start --web"
   },

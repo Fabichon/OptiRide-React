@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "android-install-debug",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"set ANDROID_HOME=D:\\SDK&& set JAVA_HOME=D:\\Android Studio\\jbr&& set PATH=%JAVA_HOME%\\bin;%ANDROID_HOME%\\platform-tools;%PATH%&& cd /d C:\\optiride\\android&& gradlew.bat app:installDebug -x lint -x test -PreactNativeDevServerPort=8082"
+			],
+			"isBackground": false
+		}
+	]
+}
