@@ -1,0 +1,618 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  TextInput,
+  FlatList,
+  Dimensions,
+  Platform,
+  ActivityIndicator,
+  Keyboard,
+} from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import Animated, { FadeInDown, FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Shadows } from '../constants';
+import { GlassView } from '../components/ui/GlassView';
+import { SUGGESTIONS_SHORT } from '../data';
+import { useAppStore } from '../store/useAppStore';
+import { getCurrentLocation, reverseGeocode, autocompleteAddress, getPlaceDetails } from '../services/geocoding';
+import type { PlacePrediction } from '../services/geocoding';
+
+type SearchField = 'departure' | 'destination';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const DEFAULT_REGION = {
+  latitude: 48.9478,
+  longitude: 2.0686,
+  latitudeDelta: 0.015,
+  longitudeDelta: 0.015,
+};
+
+const SHEET_SUGGESTIONS = SUGGESTIONS_SHORT.filter((s) => s.key !== 'carte');
+
+interface HomeScreenProps {
+  onOpenDrawer: () => void;
+  onNavigateCompare: (tripKey: string) => void;
+  onNavigateMapPin: () => void;
+}
+
+export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }: HomeScreenProps) {
+  const insets = useSafeAreaInsets();
+  const mapRef = useRef<MapView>(null);
+  const inputRef = useRef<TextInput>(null);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeField, setActiveField] = useState<SearchField>('destination');
+  const [departureQuery, setDepartureQuery] = useState('');
+  const [customDeparture, setCustomDeparture] = useState<{ label: string; latitude: number; longitude: number } | null>(null);
+  const departureInputRef = useRef<TextInput>(null);
+  const setSelectedTrip = useAppStore((s) => s.setSelectedTrip);
+  const setDynamicTrip = useAppStore((s) => s.setDynamicTrip);
+
+  // Geolocation state
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationLoading, setLocationLoading] = useState(true);
+  const [currentAddress, setCurrentAddress] = useState<string>('Position actuelle');
+
+  // Drag & drop pin state
+  const [pinMode, setPinMode] = useState(false);
+  const [pinCoord, setPinCoord] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [pinAddress, setPinAddress] = useState<{ label: string; sub: string } | null>(null);
+  const [pinLoading, setPinLoading] = useState(false);
+
+  // Autocomplete state
+  const [autoResults, setAutoResults] = useState<PlacePrediction[]>([]);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Pulse animation
+  const pulseScale = useSharedValue(1);
+  useEffect(() => {
+    pulseScale.value = withRepeat(withTiming(1.6, { duration: 1500 }), -1, true);
+  }, [pulseScale]);
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseScale.value }],
+    opacity: 2 - pulseScale.value,
+  }));
+
+  useEffect(() => {
+    (async () => {
+      setLocationLoading(true);
+      const loc = await getCurrentLocation();
+      if (loc) {
+        setUserLocation(loc);
+        const addr = await reverseGeocode(loc.latitude, loc.longitude);
+        setCurrentAddress(addr.label);
+        mapRef.current?.animateToRegion({ ...loc, latitudeDelta: 0.015, longitudeDelta: 0.015 }, 800);
+      }
+      setLocationLoading(false);
+    })();
+  }, []);
+
+  const handleLocateMe = useCallback(async () => {
+    setLocationLoading(true);
+    const loc = await getCurrentLocation();
+    if (loc) {
+      setUserLocation(loc);
+      const addr = await reverseGeocode(loc.latitude, loc.longitude);
+      setCurrentAddress(addr.label);
+      mapRef.current?.animateToRegion({ ...loc, latitudeDelta: 0.015, longitudeDelta: 0.015 }, 600);
+    }
+    setLocationLoading(false);
+  }, []);
+
+  const handlePinDragEnd = useCallback(async (coord: { latitude: number; longitude: number }) => {
+    setPinCoord(coord);
+    setPinLoading(true);
+    const addr = await reverseGeocode(coord.latitude, coord.longitude);
+    setPinAddress(addr);
+    setPinLoading(false);
+  }, []);
+
+  const handleMapLongPress = useCallback((e: any) => {
+    const coord = e.nativeEvent.coordinate;
+    setPinMode(true);
+    setPinCoord(coord);
+    handlePinDragEnd(coord);
+  }, [handlePinDragEnd]);
+
+  const enterPinMode = useCallback(() => {
+    setPinMode(true);
+    setSearchVisible(false);
+    const center = userLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude };
+    setPinCoord(center);
+    handlePinDragEnd(center);
+  }, [userLocation, handlePinDragEnd]);
+
+  // Confirm pin destination → navigate to compare with dynamic trip
+  const confirmPinDestination = useCallback(() => {
+    if (!pinCoord || !pinAddress) return;
+    setPinMode(false);
+    setDynamicTrip({
+      from: currentAddress,
+      to: pinAddress.label,
+      label: pinAddress.label,
+      latitude: pinCoord.latitude,
+      longitude: pinCoord.longitude,
+    });
+    onNavigateCompare('__dynamic__');
+  }, [pinCoord, pinAddress, currentAddress, setDynamicTrip, onNavigateCompare]);
+
+  const openSearch = useCallback(() => {
+    setSearchVisible(true);
+    setTimeout(() => inputRef.current?.focus(), 300);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setSearchVisible(false);
+    setSearchQuery('');
+    setDepartureQuery('');
+    setAutoResults([]);
+    setActiveField('destination');
+    Keyboard.dismiss();
+  }, []);
+
+  const handleSwapFields = useCallback(() => {
+    if (!customDeparture && !searchQuery) return;
+    // Swap departure and destination
+    const prevDepartureLabel = customDeparture?.label || currentAddress;
+    const prevDestQuery = searchQuery;
+    setSearchQuery(prevDepartureLabel === currentAddress ? '' : prevDepartureLabel);
+    if (prevDestQuery) {
+      setCustomDeparture(null); // Will need coords but for UX we set label
+      setDepartureQuery('');
+    } else {
+      setCustomDeparture(null);
+    }
+  }, [customDeparture, searchQuery, currentAddress]);
+
+  // Autocomplete with debounce — works for both departure and destination
+  const handleSearchChange = useCallback((text: string, field: SearchField = 'destination') => {
+    if (field === 'departure') {
+      setDepartureQuery(text);
+    } else {
+      setSearchQuery(text);
+    }
+    if (autoTimer.current) clearTimeout(autoTimer.current);
+    if (text.length < 2) { setAutoResults([]); setAutoLoading(false); return; }
+    setAutoLoading(true);
+    autoTimer.current = setTimeout(async () => {
+      const results = await autocompleteAddress(text, userLocation?.latitude, userLocation?.longitude);
+      setAutoResults(results);
+      setAutoLoading(false);
+    }, 350);
+  }, [userLocation]);
+
+  // Handle autocomplete result → get coords → navigate to compare (or set departure)
+  const handleAutoResultPress = useCallback(async (prediction: PlacePrediction) => {
+    Keyboard.dismiss();
+    const details = await getPlaceDetails(prediction.placeId);
+    if (!details) return;
+
+    if (activeField === 'departure') {
+      // Set custom departure
+      setCustomDeparture({ label: prediction.label, latitude: details.latitude, longitude: details.longitude });
+      setDepartureQuery('');
+      setAutoResults([]);
+      setActiveField('destination');
+      setTimeout(() => inputRef.current?.focus(), 200);
+    } else {
+      // Destination selected → navigate to compare
+      const departureLabel = customDeparture?.label || currentAddress;
+      closeSearch();
+      setDynamicTrip({
+        from: departureLabel,
+        to: prediction.label,
+        label: prediction.label,
+        latitude: details.latitude,
+        longitude: details.longitude,
+      });
+      onNavigateCompare('__dynamic__');
+    }
+  }, [activeField, closeSearch, currentAddress, customDeparture, setDynamicTrip, onNavigateCompare]);
+
+  const filteredSuggestions = useMemo(() => {
+    if (!searchQuery) return SUGGESTIONS_SHORT;
+    const q = searchQuery.toLowerCase();
+    return SUGGESTIONS_SHORT.filter(
+      (s) => s.label.toLowerCase().includes(q) || (s.sub && s.sub.toLowerCase().includes(q))
+    );
+  }, [searchQuery]);
+
+  const handleSuggestionPress = useCallback((key: string) => {
+    if (key === 'carte') { enterPinMode(); return; }
+    setSelectedTrip(key);
+    closeSearch();
+    onNavigateCompare(key);
+  }, [setSelectedTrip, onNavigateCompare, enterPinMode, closeSearch]);
+
+  const iconForKey = (icon: string) => {
+    switch (icon) {
+      case 'home': return '🏠';
+      case 'work': return '💼';
+      case 'pin': return '📍';
+      case 'map': return '🗺️';
+      default: return '📍';
+    }
+  };
+
+  const initialRegion = userLocation
+    ? { ...userLocation, latitudeDelta: 0.015, longitudeDelta: 0.015 }
+    : DEFAULT_REGION;
+
+  const activeQuery = activeField === 'departure' ? departureQuery : searchQuery;
+  const showAutoResults = activeQuery.length >= 2 && (autoResults.length > 0 || autoLoading);
+
+  return (
+    <View style={styles.container}>
+      {/* ═══ MAP ═══ */}
+      <View style={styles.mapArea}>
+        <MapView
+          ref={mapRef}
+          style={StyleSheet.absoluteFillObject}
+          initialRegion={initialRegion}
+          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+          showsUserLocation={false}
+          showsMyLocationButton={false}
+          showsCompass={false}
+          zoomEnabled={true}
+          zoomTapEnabled={true}
+          zoomControlEnabled={Platform.OS === 'android'}
+          scrollEnabled={true}
+          rotateEnabled={true}
+          pitchEnabled={true}
+          onLongPress={handleMapLongPress}
+        >
+          {userLocation && !pinMode && (
+            <Marker coordinate={userLocation} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
+              <View style={styles.userMarkerContainer}>
+                <Animated.View style={[styles.userMarkerPulse, pulseStyle]} />
+                <View style={styles.userMarkerDot} />
+              </View>
+            </Marker>
+          )}
+
+          {pinMode && pinCoord && (
+            <Marker
+              coordinate={pinCoord}
+              draggable
+              onDragEnd={(e) => handlePinDragEnd(e.nativeEvent.coordinate)}
+              anchor={{ x: 0.5, y: 1 }}
+            >
+              <View style={styles.destPinContainer}>
+                <View style={styles.destPinHead}>
+                  <Text style={styles.destPinIcon}>📍</Text>
+                </View>
+                <View style={styles.destPinStem} />
+              </View>
+            </Marker>
+          )}
+        </MapView>
+
+        {/* Hamburger */}
+        <Pressable style={[styles.hamburger, { top: insets.top + 10 }]} onPress={onOpenDrawer}>
+          <GlassView variant="button" style={styles.hamburgerGlass}>
+            <Text style={styles.hamburgerIcon}>☰</Text>
+          </GlassView>
+        </Pressable>
+
+        {/* Locate me — bottom right above sheet */}
+        <Pressable style={styles.locateBtn} onPress={handleLocateMe}>
+          <GlassView variant="button" style={styles.locateBtnGlass}>
+            {locationLoading ? <ActivityIndicator size="small" color={Colors.teal} /> : <Text style={styles.locateBtnIcon}>◎</Text>}
+          </GlassView>
+        </Pressable>
+
+        {/* Pin mode banner */}
+        {pinMode && pinAddress && (
+          <Animated.View entering={FadeIn.duration(250)} style={[styles.pinBanner, { top: insets.top + 64 }]}>
+            <GlassView variant="panel" style={styles.pinBannerGlass}>
+              <View style={styles.pinBannerContent}>
+                <View style={styles.pinBannerInfo}>
+                  {pinLoading ? (
+                    <ActivityIndicator size="small" color={Colors.teal} />
+                  ) : (
+                    <>
+                      <Text style={styles.pinBannerLabel} numberOfLines={1}>{pinAddress.label}</Text>
+                      <Text style={styles.pinBannerSub} numberOfLines={1}>{pinAddress.sub}</Text>
+                    </>
+                  )}
+                </View>
+                <Pressable style={styles.pinBannerConfirm} onPress={confirmPinDestination}>
+                  <Text style={styles.pinBannerConfirmText}>Comparer</Text>
+                </Pressable>
+                <Pressable style={styles.pinBannerCancel} onPress={() => { setPinMode(false); setPinCoord(null); setPinAddress(null); }}>
+                  <Text style={styles.pinBannerCancelText}>✕</Text>
+                </Pressable>
+              </View>
+            </GlassView>
+          </Animated.View>
+        )}
+
+        {/* Pin mode: tap to place instruction */}
+        {pinMode && !pinAddress && (
+          <Animated.View entering={FadeIn.duration(300)} style={[styles.pinInstruction, { top: insets.top + 64 }]}>
+            <GlassView variant="panel" style={styles.pinInstructionGlass}>
+              <Text style={styles.pinInstructionText}>Appuyez longuement sur la carte pour placer un pin</Text>
+            </GlassView>
+          </Animated.View>
+        )}
+      </View>
+
+      {/* ═══ BOTTOM SHEET ═══ */}
+      {!pinMode && !searchVisible && (
+        <View style={[styles.sheet, { paddingBottom: insets.bottom || 12 }]}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetContent}>
+            <Pressable style={styles.searchBar} onPress={openSearch}>
+              <View style={styles.searchTealDot} />
+              <Text style={styles.searchPlaceholder}>Où allez-vous ?</Text>
+            </Pressable>
+            <Text style={styles.sectionTitle}>DESTINATIONS RÉCENTES</Text>
+            {SHEET_SUGGESTIONS.map((item, index) => {
+              const isFirst = index === 0;
+              return (
+                <Animated.View key={item.key} entering={FadeInDown.delay(index * 60).springify()}>
+                  <Pressable
+                    style={[styles.suggestionCard, isFirst && styles.suggestionCardHighlight]}
+                    onPress={() => handleSuggestionPress(item.key)}
+                  >
+                    <View style={[styles.suggestionIcon, isFirst ? styles.suggestionIconHighlight : styles.suggestionIconDefault]}>
+                      <Text style={[styles.suggestionEmoji, isFirst && { color: Colors.white }]}>{iconForKey(item.icon)}</Text>
+                    </View>
+                    <View style={styles.suggestionInfo}>
+                      <Text style={styles.suggestionLabel}>{item.label}</Text>
+                    </View>
+                    <Text style={[styles.suggestionChevron, isFirst && { color: Colors.teal }]}>›</Text>
+                  </Pressable>
+                </Animated.View>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
+      {/* ═══ SEARCH OVERLAY ═══ */}
+      {searchVisible && (
+        <View style={[styles.searchOverlay, { paddingTop: insets.top }]}>
+          <View style={styles.searchDragHandleRow}>
+            <View style={styles.searchDragHandleBar} />
+          </View>
+
+          {/* Departure + Swap + Destination */}
+          <View style={styles.tripFieldsContainer}>
+            <Pressable
+              style={[styles.departureRow, activeField === 'departure' && styles.departureRowActive]}
+              onPress={() => { setActiveField('departure'); setAutoResults([]); setTimeout(() => departureInputRef.current?.focus(), 200); }}
+            >
+              <View style={styles.departureDot} />
+              {activeField === 'departure' ? (
+                <TextInput
+                  ref={departureInputRef}
+                  style={styles.departureInput}
+                  placeholder={customDeparture?.label || currentAddress}
+                  placeholderTextColor={Colors.g400}
+                  value={departureQuery}
+                  onChangeText={(t) => handleSearchChange(t, 'departure')}
+                  autoFocus
+                  returnKeyType="search"
+                />
+              ) : (
+                <Text style={styles.departureText} numberOfLines={1}>
+                  {customDeparture?.label || `${currentAddress} — position actuelle`}
+                </Text>
+              )}
+              {activeField === 'departure' && departureQuery.length > 0 && (
+                <Pressable onPress={() => { setDepartureQuery(''); setAutoResults([]); }}>
+                  <Text style={styles.clearBtn}>✕</Text>
+                </Pressable>
+              )}
+            </Pressable>
+
+            <View style={styles.connectorSwapContainer}>
+              <View style={styles.connectorLine} />
+              <Pressable style={styles.swapBtn} onPress={handleSwapFields}>
+                <Text style={styles.swapIcon}>⇅</Text>
+              </Pressable>
+              <View style={styles.connectorLine} />
+            </View>
+
+            <View style={[styles.destinationRow, activeField === 'destination' && styles.destinationRowActive]}>
+              <Text style={styles.destinationPinIcon}>📍</Text>
+              <TextInput
+                ref={inputRef}
+                style={styles.destinationInput}
+                placeholder="Entrez une destination…"
+                placeholderTextColor={Colors.g400}
+                value={searchQuery}
+                onChangeText={(t) => handleSearchChange(t, 'destination')}
+                onFocus={() => { setActiveField('destination'); setAutoResults([]); }}
+                autoFocus={activeField === 'destination'}
+                returnKeyType="search"
+              />
+              {searchQuery.length > 0 && (
+                <Pressable onPress={() => { setSearchQuery(''); setAutoResults([]); }}>
+                  <Text style={styles.clearBtn}>✕</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+
+          <Text style={styles.searchSectionTitle}>
+            {showAutoResults ? 'RÉSULTATS' : 'SUGGESTIONS'}
+          </Text>
+
+          {/* Autocomplete results */}
+          {showAutoResults ? (
+            <FlatList
+              data={autoResults}
+              keyExtractor={(item) => item.placeId}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.searchListContent}
+              ListHeaderComponent={autoLoading && autoResults.length === 0 ? (
+                <View style={styles.autoLoadingRow}>
+                  <ActivityIndicator size="small" color={Colors.teal} />
+                  <Text style={styles.autoLoadingText}>Recherche en cours…</Text>
+                </View>
+              ) : null}
+              renderItem={({ item, index }) => (
+                <Animated.View entering={FadeInUp.delay(index * 30).duration(180)}>
+                  <Pressable style={styles.searchSuggestionCard} onPress={() => handleAutoResultPress(item)}>
+                    <View style={styles.searchSuggestionIcon}>
+                      <Text style={styles.searchSuggestionEmoji}>📍</Text>
+                    </View>
+                    <View style={styles.searchSuggestionInfo}>
+                      <Text style={styles.searchSuggestionLabel} numberOfLines={1}>{item.label}</Text>
+                      {item.sub ? <Text style={styles.searchSuggestionSub} numberOfLines={1}>{item.sub}</Text> : null}
+                    </View>
+                    <LinearGradient colors={[Colors.teal, '#3A8E8E']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.compareBadge}>
+                      <Text style={styles.compareBadgeText}>Comparer</Text>
+                      <Text style={styles.compareBadgeChevron}>›</Text>
+                    </LinearGradient>
+                  </Pressable>
+                </Animated.View>
+              )}
+            />
+          ) : (
+            <FlatList
+              data={filteredSuggestions}
+              keyExtractor={(item) => item.key}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.searchListContent}
+              renderItem={({ item, index }) => (
+                <Animated.View entering={FadeInUp.delay(index * 40).duration(200)}>
+                  <Pressable
+                    style={[styles.searchSuggestionCard, item.key === 'carte' && styles.searchSuggestionCardMap]}
+                    onPress={() => handleSuggestionPress(item.key)}
+                  >
+                    <View style={[styles.searchSuggestionIcon, item.key === 'carte' && styles.searchSuggestionIconMap]}>
+                      <Text style={styles.searchSuggestionEmoji}>{iconForKey(item.icon)}</Text>
+                    </View>
+                    <View style={styles.searchSuggestionInfo}>
+                      <Text style={styles.searchSuggestionLabel}>{item.label}</Text>
+                      {item.sub ? <Text style={styles.searchSuggestionSub}>{item.sub}</Text> : null}
+                    </View>
+                    {item.hint && (
+                      <LinearGradient colors={[Colors.teal, '#3A8E8E']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.compareBadge}>
+                        <Text style={styles.compareBadgeText}>Comparer</Text>
+                        <Text style={styles.compareBadgeChevron}>›</Text>
+                      </LinearGradient>
+                    )}
+                    {item.key === 'carte' && <Text style={styles.searchSuggestionChevronIcon}>›</Text>}
+                  </Pressable>
+                </Animated.View>
+              )}
+            />
+          )}
+
+          {/* Close button */}
+          <Pressable style={[styles.searchCloseBtn, { bottom: insets.bottom + 16 }]} onPress={closeSearch}>
+            <Text style={styles.searchCloseBtnText}>Fermer</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.white },
+  mapArea: { flex: 1, position: 'relative' },
+
+  // User marker
+  userMarkerContainer: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
+  userMarkerPulse: { position: 'absolute', width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,122,255,0.12)' },
+  userMarkerDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#007AFF', borderWidth: 4, borderColor: '#FFF', shadowColor: '#007AFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 6 },
+
+  // Dest pin
+  destPinContainer: { alignItems: 'center' },
+  destPinHead: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.teal, alignItems: 'center', justifyContent: 'center', shadowColor: Colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },
+  destPinIcon: { fontSize: 20 },
+  destPinStem: { width: 3, height: 14, backgroundColor: Colors.teal, borderBottomLeftRadius: 2, borderBottomRightRadius: 2 },
+
+  // Map buttons
+  hamburger: { position: 'absolute', left: 16, zIndex: 10 },
+  hamburgerGlass: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  hamburgerIcon: { fontSize: 20, color: Colors.navy },
+  locateBtn: { position: 'absolute', right: 16, bottom: 16, zIndex: 10 },
+  locateBtnGlass: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  locateBtnIcon: { fontSize: 20 },
+
+  // Pin banner
+  pinBanner: { position: 'absolute', left: 16, right: 16, zIndex: 10 },
+  pinBannerGlass: { borderRadius: 16 },
+  pinBannerContent: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
+  pinBannerInfo: { flex: 1, gap: 2 },
+  pinBannerLabel: { fontSize: 15, fontWeight: '700', color: Colors.navy },
+  pinBannerSub: { fontSize: 12, color: Colors.g500 },
+  pinBannerConfirm: { backgroundColor: Colors.teal, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 },
+  pinBannerConfirmText: { color: Colors.white, fontSize: 13, fontWeight: '700' },
+  pinBannerCancel: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.g100, alignItems: 'center', justifyContent: 'center' },
+  pinBannerCancelText: { fontSize: 16, color: Colors.g600, fontWeight: '600' },
+
+  // Pin instruction
+  pinInstruction: { position: 'absolute', left: 16, right: 16, zIndex: 10 },
+  pinInstructionGlass: { borderRadius: 16 },
+  pinInstructionText: { fontSize: 14, fontWeight: '500', color: Colors.navy, textAlign: 'center', padding: 14 },
+
+  // Sheet
+  sheet: { backgroundColor: 'rgba(248,252,252,0.97)', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, ...Shadows.elevated },
+  sheetHandle: { width: 38, height: 4.5, borderRadius: 3, backgroundColor: Colors.g300, alignSelf: 'center', marginBottom: 8 },
+  sheetContent: { paddingHorizontal: 16, paddingBottom: 4 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: 18, borderWidth: 1.5, borderColor: Colors.g200, paddingHorizontal: 18, paddingVertical: 16, marginBottom: 16, gap: 12, shadowColor: Colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 3 },
+  searchTealDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.teal },
+  searchPlaceholder: { fontSize: 16, color: Colors.g400, fontWeight: '500' },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: Colors.g400, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginLeft: 2 },
+  suggestionCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.g50, borderRadius: 14, padding: 11, paddingHorizontal: 12, gap: 12, borderWidth: 1.5, borderColor: Colors.g100, marginBottom: 6 },
+  suggestionCardHighlight: { backgroundColor: Colors.tealSoft, borderColor: 'rgba(75,168,168,0.3)' },
+  suggestionIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  suggestionIconHighlight: { backgroundColor: Colors.teal },
+  suggestionIconDefault: { backgroundColor: Colors.g200 },
+  suggestionEmoji: { fontSize: 18 },
+  suggestionInfo: { flex: 1 },
+  suggestionLabel: { fontSize: 14, fontWeight: '700', color: Colors.navy },
+  suggestionChevron: { fontSize: 18, color: Colors.g300, fontWeight: '300' },
+
+  // Search overlay
+  searchOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(248,252,252,0.95)', zIndex: 100 },
+  searchDragHandleRow: { alignItems: 'center', paddingVertical: 12 },
+  searchDragHandleBar: { width: 38, height: 4.5, backgroundColor: 'rgba(26,58,74,0.2)', borderRadius: 3 },
+  tripFieldsContainer: { paddingHorizontal: 16, paddingBottom: 14 },
+  departureRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: 14, backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(200,218,218,0.5)' },
+  departureRowActive: { borderColor: '#007AFF', borderWidth: 2, backgroundColor: 'rgba(255,255,255,0.88)' },
+  departureDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#007AFF' },
+  departureText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.navy },
+  departureInput: { flex: 1, fontSize: 14, fontWeight: '500', color: Colors.navy, padding: 0 },
+  connectorSwapContainer: { flexDirection: 'row', alignItems: 'center', paddingLeft: 19, paddingVertical: 2, gap: 8 },
+  connectorLine: { width: 2, height: 8, backgroundColor: 'rgba(26,58,74,0.2)', borderRadius: 1 },
+  swapBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.g100, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.g200 },
+  swapIcon: { fontSize: 14, color: Colors.navy, fontWeight: '700' },
+  destinationRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: 14, backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(200,218,218,0.5)' },
+  destinationRowActive: { borderColor: Colors.teal, borderWidth: 2, backgroundColor: 'rgba(255,255,255,0.88)' },
+  destinationPinIcon: { fontSize: 14 },
+  destinationInput: { flex: 1, fontSize: 14, fontWeight: '500', color: Colors.navy, padding: 0 },
+  clearBtn: { fontSize: 16, color: Colors.g400, fontWeight: '600', paddingHorizontal: 4 },
+  searchSectionTitle: { fontSize: 11, fontWeight: '700', color: 'rgba(26,58,74,0.45)', letterSpacing: 1, textTransform: 'uppercase', marginLeft: 18, marginBottom: 10 },
+  searchListContent: { paddingHorizontal: 16, paddingBottom: 80, gap: 7 },
+  autoLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14 },
+  autoLoadingText: { fontSize: 13, color: Colors.g500, fontWeight: '500' },
+  searchSuggestionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)', shadowColor: 'rgba(26,58,74,0.06)', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 12, elevation: 2 },
+  searchSuggestionCardMap: { backgroundColor: 'rgba(255,255,255,0.4)' },
+  searchSuggestionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.8)', borderWidth: 1, borderColor: 'rgba(200,218,218,0.4)', alignItems: 'center', justifyContent: 'center' },
+  searchSuggestionIconMap: { backgroundColor: 'rgba(75,168,168,0.12)' },
+  searchSuggestionEmoji: { fontSize: 18 },
+  searchSuggestionInfo: { flex: 1 },
+  searchSuggestionLabel: { fontSize: 14, fontWeight: '700', color: Colors.navy },
+  searchSuggestionSub: { fontSize: 11, color: Colors.g500, marginTop: 1 },
+  searchSuggestionChevronIcon: { fontSize: 14, color: Colors.g400, fontWeight: '300' },
+  compareBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 9, shadowColor: Colors.teal, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 3 },
+  compareBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.white },
+  compareBadgeChevron: { fontSize: 12, fontWeight: '700', color: Colors.white },
+  searchCloseBtn: { position: 'absolute', alignSelf: 'center', backgroundColor: Colors.navy, borderRadius: 14, paddingHorizontal: 28, paddingVertical: 12 },
+  searchCloseBtnText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
+});
