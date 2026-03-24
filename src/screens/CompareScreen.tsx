@@ -39,6 +39,12 @@ const SORT_TABS = [
   { mode: 'green' as const, label: 'Plus vert', icon: '🌿', activeColor: Colors.green, activeBg: Colors.greenSoft },
 ];
 
+const SORT_COLORS: Record<string, { accent: string; soft: string; light: string }> = {
+  cheap: { accent: Colors.teal, soft: Colors.tealSoft, light: Colors.tealLight },
+  fast:  { accent: '#8B5CF6', soft: 'rgba(139,92,246,0.08)', light: 'rgba(139,92,246,0.3)' },
+  green: { accent: Colors.green, soft: Colors.greenSoft, light: 'rgba(61,170,110,0.3)' },
+};
+
 const CATEGORIES = ['Tous', 'Standard', 'Premium', 'XL', 'Femme'];
 
 interface CompareScreenProps {
@@ -101,6 +107,8 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
   const setSortMode = useAppStore((s) => s.setSortMode);
   const setCategoryFilter = useAppStore((s) => s.setCategoryFilter);
   const setSelectedRide = useAppStore((s) => s.setSelectedRide);
+
+  const activeColors = SORT_COLORS[sortMode] || SORT_COLORS.cheap;
 
   // Destination coordinates
   const destCoord = useMemo(() => {
@@ -348,8 +356,8 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
                   <>
                     {/* Collapsed: OptiRide picks */}
                     <View style={styles.optiHeader}>
-                      <Text style={styles.optiLogo}>◎</Text>
-                      <Text style={styles.optiTitle}>SÉLECTION OPTIRIDE</Text>
+                      <Text style={[styles.optiLogo, { color: activeColors.accent }]}>◎</Text>
+                      <Text style={[styles.optiTitle, { color: activeColors.accent }]}>SÉLECTION OPTIRIDE</Text>
                       <View style={styles.optiLine} />
                       <Pressable onPress={() => setExpanded(true)}>
                         <Text style={styles.optiSeeAll}>Tout voir ↑</Text>
@@ -360,6 +368,9 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
                       selectedId={selectedRideId}
                       onSelect={(id) => setSelectedRide(selectedRideId === id ? null : id)}
                       onBook={(ride) => onBookRide(ride, tripKey)}
+                      accentColor={activeColors.accent}
+                      accentSoft={activeColors.soft}
+                      accentLight={activeColors.light}
                     />
                   </>
                 ) : null
@@ -372,6 +383,7 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
                     selected={selectedRideId === item.id}
                     onPress={() => setSelectedRide(selectedRideId === item.id ? null : item.id)}
                     onBook={() => onBookRide(item, tripKey)}
+                    accentColor={activeColors.accent}
                   />
                 </View>
               )}
@@ -387,7 +399,7 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
                 const ride = sortedAndFiltered.find((r) => r.id === selectedRideId) || optiSelection.find((r) => r.id === selectedRideId);
                 if (!ride) return null;
                 return (
-                  <Pressable style={styles.ctaBtn} onPress={() => onBookRide(ride, tripKey)}>
+                  <Pressable style={[styles.ctaBtn, { backgroundColor: activeColors.accent, shadowColor: activeColors.accent }]} onPress={() => onBookRide(ride, tripKey)}>
                     <Text style={styles.ctaText}>Réserver via {ride.provider}</Text>
                     <Text style={styles.ctaPrice}>{ride.price.toFixed(2).replace('.', ',')} €</Text>
                   </Pressable>
@@ -423,7 +435,7 @@ const styles = StyleSheet.create({
   // Floating header
   floatingHeader: { position: 'absolute', left: 14, right: 14, zIndex: 10 },
   floatingHeaderGlass: {
-    borderRadius: 16, flexDirection: 'row', alignItems: 'center',
+    borderRadius: 20, flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 12, paddingVertical: 10, gap: 10,
   },
   backBtn: {
@@ -450,7 +462,7 @@ const styles = StyleSheet.create({
   bottomSheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: 'rgba(250,253,253,0.97)',
-    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
     ...Shadows.elevated,
     zIndex: 20,
     overflow: 'hidden',
@@ -468,7 +480,7 @@ const styles = StyleSheet.create({
   sortChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 13, paddingVertical: 9,
-    borderRadius: 12, borderWidth: 1.5, borderColor: Colors.g200,
+    borderRadius: 16, borderWidth: 1.5, borderColor: Colors.g200,
     backgroundColor: 'rgba(255,255,255,0.82)',
   },
   sortChipIcon: { fontSize: 13 },
@@ -511,7 +523,7 @@ const styles = StyleSheet.create({
   },
   ctaBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 14, borderRadius: 14,
+    paddingVertical: 14, borderRadius: 18,
     backgroundColor: Colors.teal,
     shadowColor: Colors.teal, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 20, elevation: 6,
     gap: 10,

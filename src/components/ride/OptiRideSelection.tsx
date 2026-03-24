@@ -9,15 +9,18 @@ interface OptiRideSelectionProps {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onBook: (ride: Ride) => void;
+  accentColor?: string;
+  accentSoft?: string;
+  accentLight?: string;
 }
 
-export function OptiRideSelection({ rides, selectedId, onSelect, onBook }: OptiRideSelectionProps) {
+export function OptiRideSelection({ rides, selectedId, onSelect, onBook, accentColor, accentSoft, accentLight }: OptiRideSelectionProps) {
   if (rides.length === 0) return null;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, accentSoft ? { backgroundColor: accentSoft } : undefined, accentLight ? { borderColor: accentLight } : undefined]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Sélection OptiRide</Text>
+        <Text style={[styles.title, accentColor ? { color: accentColor } : undefined]}>Sélection OptiRide</Text>
         <Text style={styles.subtitle}>Top 3 recommandés</Text>
       </View>
       {rides.map((ride, index) => (
@@ -28,6 +31,7 @@ export function OptiRideSelection({ rides, selectedId, onSelect, onBook }: OptiR
           selected={selectedId === ride.id}
           onPress={() => onSelect(ride.id)}
           onBook={() => onBook(ride)}
+          accentColor={accentColor}
         />
       ))}
     </View>
@@ -39,7 +43,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 14,
-    borderRadius: 20,
+    borderRadius: 24,
     backgroundColor: Colors.tealSoft,
     borderWidth: 1,
     borderColor: Colors.tealLight,

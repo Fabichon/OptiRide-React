@@ -537,15 +537,15 @@ const styles = StyleSheet.create({
 
   // Map buttons
   hamburger: { position: 'absolute', left: 16, zIndex: 10 },
-  hamburgerGlass: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  hamburgerGlass: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   hamburgerIcon: { fontSize: 20, color: Colors.navy },
-  locateBtn: { position: 'absolute', right: 16, bottom: 16, zIndex: 10 },
-  locateBtnGlass: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  locateBtnIcon: { fontSize: 20 },
+  locateBtn: { position: 'absolute', right: 16, bottom: 24, zIndex: 10 },
+  locateBtnGlass: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  locateBtnIcon: { fontSize: 22, color: Colors.teal },
 
   // Pin banner
   pinBanner: { position: 'absolute', left: 16, right: 16, zIndex: 10 },
-  pinBannerGlass: { borderRadius: 16 },
+  pinBannerGlass: { borderRadius: 20 },
   pinBannerContent: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
   pinBannerInfo: { flex: 1, gap: 2 },
   pinBannerLabel: { fontSize: 15, fontWeight: '700', color: Colors.navy },
@@ -561,14 +561,14 @@ const styles = StyleSheet.create({
   pinInstructionText: { fontSize: 14, fontWeight: '500', color: Colors.navy, textAlign: 'center', padding: 14 },
 
   // Sheet
-  sheet: { backgroundColor: 'rgba(248,252,252,0.97)', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, ...Shadows.elevated },
+  sheet: { backgroundColor: 'rgba(248,252,252,0.97)', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 10, ...Shadows.elevated },
   sheetHandle: { width: 38, height: 4.5, borderRadius: 3, backgroundColor: Colors.g300, alignSelf: 'center', marginBottom: 8 },
   sheetContent: { paddingHorizontal: 16, paddingBottom: 4 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: 18, borderWidth: 1.5, borderColor: Colors.g200, paddingHorizontal: 18, paddingVertical: 16, marginBottom: 16, gap: 12, shadowColor: Colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 3 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: 22, borderWidth: 1.5, borderColor: Colors.g200, paddingHorizontal: 18, paddingVertical: 16, marginBottom: 16, gap: 12, shadowColor: Colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 3 },
   searchTealDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.teal },
   searchPlaceholder: { fontSize: 16, color: Colors.g400, fontWeight: '500' },
   sectionTitle: { fontSize: 11, fontWeight: '700', color: Colors.g400, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginLeft: 2 },
-  suggestionCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.g50, borderRadius: 14, padding: 11, paddingHorizontal: 12, gap: 12, borderWidth: 1.5, borderColor: Colors.g100, marginBottom: 6 },
+  suggestionCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.g50, borderRadius: 16, padding: 11, paddingHorizontal: 12, gap: 12, borderWidth: 1.5, borderColor: Colors.g100, marginBottom: 6 },
   suggestionCardHighlight: { backgroundColor: Colors.tealSoft, borderColor: 'rgba(75,168,168,0.3)' },
   suggestionIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   suggestionIconHighlight: { backgroundColor: Colors.teal },
@@ -601,7 +601,7 @@ const styles = StyleSheet.create({
   searchListContent: { paddingHorizontal: 16, paddingBottom: 80, gap: 7 },
   autoLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14 },
   autoLoadingText: { fontSize: 13, color: Colors.g500, fontWeight: '500' },
-  searchSuggestionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)', shadowColor: 'rgba(26,58,74,0.06)', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 12, elevation: 2 },
+  searchSuggestionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, paddingHorizontal: 14, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)', shadowColor: 'rgba(26,58,74,0.06)', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 12, elevation: 2 },
   searchSuggestionCardMap: { backgroundColor: 'rgba(255,255,255,0.4)' },
   searchSuggestionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.8)', borderWidth: 1, borderColor: 'rgba(200,218,218,0.4)', alignItems: 'center', justifyContent: 'center' },
   searchSuggestionIconMap: { backgroundColor: 'rgba(75,168,168,0.12)' },
@@ -613,6 +613,6 @@ const styles = StyleSheet.create({
   compareBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 9, shadowColor: Colors.teal, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 3 },
   compareBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.white },
   compareBadgeChevron: { fontSize: 12, fontWeight: '700', color: Colors.white },
-  searchCloseBtn: { position: 'absolute', alignSelf: 'center', backgroundColor: Colors.navy, borderRadius: 14, paddingHorizontal: 28, paddingVertical: 12 },
+  searchCloseBtn: { position: 'absolute', alignSelf: 'center', backgroundColor: Colors.navy, borderRadius: 18, paddingHorizontal: 28, paddingVertical: 12 },
   searchCloseBtnText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
 });

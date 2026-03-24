@@ -12,14 +12,15 @@ interface RideCardProps {
   selected: boolean;
   onPress: () => void;
   onBook: () => void;
+  accentColor?: string;
 }
 
-export function RideCard({ ride, index, selected, onPress, onBook }: RideCardProps) {
+export function RideCard({ ride, index, selected, onPress, onBook, accentColor }: RideCardProps) {
   return (
     <Animated.View entering={FadeInDown.delay(index * 80).springify()}>
       <Pressable
         onPress={onPress}
-        style={[styles.card, selected && styles.cardSelected]}
+        style={[styles.card, selected && [styles.cardSelected, accentColor ? { borderColor: accentColor } : undefined]]}
       >
         <ProviderAvatar letter={ride.letter} color={ride.color} size={38} />
 
@@ -42,21 +43,11 @@ export function RideCard({ ride, index, selected, onPress, onBook }: RideCardPro
           )}
         </View>
 
-        {/* Green score indicator */}
-        <View style={[styles.greenDot, { backgroundColor: greenColor(ride.greenScore) }]}>
-          <Text style={styles.greenText}>{ride.greenScore}</Text>
-        </View>
       </Pressable>
 
       {/* No expanded "Ouvrir" button — booking is via the CTA at bottom of sheet */}
     </Animated.View>
   );
-}
-
-function greenColor(score: number): string {
-  if (score >= 80) return Colors.green;
-  if (score >= 50) return Colors.promo;
-  return Colors.freeNow;
 }
 
 const styles = StyleSheet.create({
@@ -66,7 +57,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     backgroundColor: Colors.white,
-    borderRadius: 16,
+    borderRadius: 20,
     marginBottom: 8,
     gap: 12,
     ...Shadows.subtle,
@@ -115,22 +106,10 @@ const styles = StyleSheet.create({
     color: Colors.g400,
     textDecorationLine: 'line-through',
   },
-  greenDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  greenText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.white,
-  },
   expandedSection: {
     backgroundColor: Colors.tealSoft,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
     padding: 14,
     marginBottom: 8,
     alignItems: 'center',
@@ -139,7 +118,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.teal,
     paddingHorizontal: 32,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: 18,
     ...Shadows.glow,
   },
   bookText: {

@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     backgroundColor: Colors.tealSoft,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     marginBottom: 24,
   },
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.white,
-    borderRadius: 18,
+    borderRadius: 22,
     padding: 16,
     marginBottom: 10,
     gap: 14,
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   },
   connectBtn: {
     backgroundColor: Colors.teal,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   },
   disconnectBtn: {
     backgroundColor: Colors.g100,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   },
   installBtn: {
     backgroundColor: Colors.g50,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderWidth: 1,
