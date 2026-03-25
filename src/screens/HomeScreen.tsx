@@ -95,6 +95,12 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
   }, []);
 
   const handleLocateMe = useCallback(async () => {
+    // Exit pin mode if active so the user marker becomes visible again
+    if (pinMode) {
+      setPinMode(false);
+      setPinCoord(null);
+      setPinAddress(null);
+    }
     setLocationLoading(true);
     const loc = await getCurrentLocation();
     if (loc) {
@@ -104,7 +110,7 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
       mapRef.current?.animateToRegion({ ...loc, latitudeDelta: 0.015, longitudeDelta: 0.015 }, 600);
     }
     setLocationLoading(false);
-  }, []);
+  }, [pinMode]);
 
   const handlePinDragEnd = useCallback(async (coord: { latitude: number; longitude: number }) => {
     setPinCoord(coord);
@@ -231,13 +237,14 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
     onNavigateCompare(key);
   }, [setSelectedTrip, onNavigateCompare, enterPinMode, closeSearch]);
 
+  // Placeholder neutre en attendant les vrais designs (icones custom a venir)
   const iconForKey = (icon: string) => {
     switch (icon) {
-      case 'home': return '🏠';
-      case 'work': return '💼';
-      case 'pin': return '📍';
-      case 'map': return '🗺️';
-      default: return '📍';
+      case 'home': return '⌂';
+      case 'work': return '◆';
+      case 'pin': return '●';
+      case 'map': return '◎';
+      default: return '●';
     }
   };
 

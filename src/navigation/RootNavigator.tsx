@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -27,6 +27,7 @@ function HomeStackNavigator() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [inviteVisible, setInviteVisible] = useState(false);
+  const navigationRef = useRef<any>(null);
 
   const pendingDrawerAction = useAppStore((s) => s.pendingDrawerAction);
   const setPendingDrawerAction = useAppStore((s) => s.setPendingDrawerAction);
@@ -47,6 +48,15 @@ function HomeStackNavigator() {
     setPendingDrawerAction(null);
   }, [pendingDrawerAction, setPendingDrawerAction]);
 
+  // Close modal and reopen the drawer menu
+  const closeModalAndOpenDrawer = useCallback((setter: (v: boolean) => void) => {
+    setter(false);
+    // Small delay to let the modal dismiss animation complete before reopening drawer
+    setTimeout(() => {
+      navigationRef.current?.openDrawer?.();
+    }, 350);
+  }, []);
+
   const handleBookRide = useCallback((ride: Ride) => {
     setSelectedRide(ride);
     setRedirectVisible(true);
@@ -56,13 +66,17 @@ function HomeStackNavigator() {
     <>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Home">
-          {({ navigation }) => (
-            <HomeScreen
-              onOpenDrawer={() => navigation.openDrawer()}
-              onNavigateCompare={(tripKey) => navigation.navigate('Compare', { tripKey })}
-              onNavigateMapPin={() => navigation.navigate('Compare', { tripKey: '__dynamic__' })}
-            />
-          )}
+          {({ navigation }) => {
+            // Store navigation ref so modals can reopen the drawer
+            navigationRef.current = navigation;
+            return (
+              <HomeScreen
+                onOpenDrawer={() => navigation.openDrawer()}
+                onNavigateCompare={(tripKey) => navigation.navigate('Compare', { tripKey })}
+                onNavigateMapPin={() => navigation.navigate('Compare', { tripKey: '__dynamic__' })}
+              />
+            );
+          }}
         </Stack.Screen>
         <Stack.Screen name="Compare">
           {({ navigation, route }) => (
@@ -87,15 +101,15 @@ function HomeStackNavigator() {
       />
       <SettingsSheet
         visible={settingsVisible}
-        onClose={() => setSettingsVisible(false)}
+        onClose={() => closeModalAndOpenDrawer(setSettingsVisible)}
       />
       <HistorySheet
         visible={historyVisible}
-        onClose={() => setHistoryVisible(false)}
+        onClose={() => closeModalAndOpenDrawer(setHistoryVisible)}
       />
       <InviteSheet
         visible={inviteVisible}
-        onClose={() => setInviteVisible(false)}
+        onClose={() => closeModalAndOpenDrawer(setInviteVisible)}
       />
     </>
   );

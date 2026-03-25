@@ -19,7 +19,9 @@ import Animated, {
   Easing,
   FadeIn,
   SlideInUp,
+  runOnJS,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Shadows } from '../constants';
 import { GlassView } from '../components/ui/GlassView';
@@ -63,7 +65,7 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
   const [catDropOpen, setCatDropOpen] = useState(false);
   const [trip, setTrip] = useState<(Trip & { label?: string; address?: string }) | null>(null);
 
-  const REFRESH_INTERVAL = 30_000; // 30s — prices change in real-time
+  const [refreshing, setRefreshing] = useState(false);
 
   // Fetch rides via API service (falls back to mock if backend unavailable)
   const loadRides = useCallback(async () => {
@@ -71,34 +73,27 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
     return result;
   }, [tripKey, dynamicTrip]);
 
-  // Initial fetch + auto-refresh every 30s
+  // Initial fetch only (no auto-refresh — user triggers refresh manually)
   useEffect(() => {
     let cancelled = false;
-    let intervalId: ReturnType<typeof setInterval>;
-
-    // Initial load
     (async () => {
       const result = await loadRides();
       if (!cancelled) setTrip(result);
     })();
+    return () => { cancelled = true; };
+  }, [loadRides]);
 
-    // Refresh prices periodically (silent — no loading state to avoid UI flicker)
-    intervalId = setInterval(async () => {
-      if (cancelled) return;
-      const result = await loadRides();
-      if (!cancelled && result) {
-        setTrip((prev) => {
-          if (!prev) return result;
-          // Merge: keep trip metadata, update rides with fresh prices
-          return { ...prev, rides: result.rides };
-        });
-      }
-    }, REFRESH_INTERVAL);
-
-    return () => {
-      cancelled = true;
-      clearInterval(intervalId);
-    };
+  // Manual refresh triggered by user
+  const handleRefreshPrices = useCallback(async () => {
+    setRefreshing(true);
+    const result = await loadRides();
+    if (result) {
+      setTrip((prev) => {
+        if (!prev) return result;
+        return { ...prev, rides: result.rides };
+      });
+    }
+    setRefreshing(false);
   }, [loadRides]);
 
   const sortMode = useAppStore((s) => s.sortMode);
@@ -190,6 +185,30 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
     }
   }, [categoryFilter]);
 
+  // Pan gesture for bottom sheet drag handle — swipe up to expand, down to collapse
+  const dragGesture = useMemo(() =>
+    Gesture.Pan()
+      .onEnd((e) => {
+        if (e.translationY < -40) {
+          runOnJS(setExpanded)(true);
+        } else if (e.translationY > 40) {
+          runOnJS(setExpanded)(false);
+        }
+      }),
+    []
+  );
+
+  // Tap gesture to toggle expansion
+  const tapGesture = useMemo(() =>
+    Gesture.Tap()
+      .onEnd(() => {
+        runOnJS(setExpanded)(!expanded);
+      }),
+    [expanded]
+  );
+
+  const composedGesture = useMemo(() => Gesture.Race(dragGesture, tapGesture), [dragGesture, tapGesture]);
+
   if (!trip) return null;
 
   const sheetMaxHeight = expanded ? SCREEN_HEIGHT - insets.top - 100 : SCREEN_HEIGHT * 0.52;
@@ -265,6 +284,9 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
               <Text style={styles.headerChipText}>{arrivalTime}</Text>
             </View>
           </View>
+          <Pressable onPress={handleRefreshPrices} style={styles.refreshBtn} disabled={refreshing}>
+            <Text style={[styles.refreshIcon, refreshing && { opacity: 0.4 }]}>{refreshing ? '⟳' : '↻'}</Text>
+          </Pressable>
         </GlassView>
       </Animated.View>
 
@@ -278,10 +300,12 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
       {/* ═══ BOTTOM SHEET ═══ */}
       {!loading && (
         <Animated.View style={[styles.bottomSheet, expanded ? { height: sheetMaxHeight } : { maxHeight: sheetMaxHeight }, sheetStyle]}>
-          {/* Drag handle */}
-          <Pressable onPress={() => setExpanded((e) => !e)} style={styles.dragHandle}>
-            <View style={styles.dragHandleBar} />
-          </Pressable>
+          {/* Drag handle — swipe up/down or tap to toggle */}
+          <GestureDetector gesture={composedGesture}>
+            <Animated.View style={styles.dragHandle}>
+              <View style={styles.dragHandleBar} />
+            </Animated.View>
+          </GestureDetector>
 
           {/* Sort tabs — only when expanded */}
           {expanded && (
@@ -455,6 +479,8 @@ const styles = StyleSheet.create({
   headerChipTeal: { backgroundColor: Colors.tealSoft, borderWidth: 1, borderColor: `${Colors.teal}30` },
   headerChipTealText: { fontSize: 11, fontWeight: '700', color: Colors.teal },
   headerChipText: { fontSize: 11, fontWeight: '600', color: Colors.g600 },
+  refreshBtn: { width: 30, height: 30, borderRadius: 9, backgroundColor: Colors.g100, borderWidth: 1, borderColor: Colors.g200, alignItems: 'center', justifyContent: 'center' },
+  refreshIcon: { fontSize: 16, color: Colors.teal, fontWeight: '700' },
 
   destBadge: { position: 'absolute', right: 40, zIndex: 5 },
 

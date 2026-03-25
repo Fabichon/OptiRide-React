@@ -78,6 +78,9 @@ export function HistorySheet({ visible, onClose }: HistorySheetProps) {
                       {saved > 0 && (
                         <Text style={styles.savedBadge}>-{saved.toFixed(2)} €</Text>
                       )}
+                      {co2 > 0 && (
+                        <Text style={styles.co2Badge}>-{co2.toFixed(1)} kg CO₂</Text>
+                      )}
                     </View>
                   </View>
                 );
@@ -184,6 +187,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.green,
     backgroundColor: Colors.greenSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  co2Badge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#E67E22',
+    backgroundColor: 'rgba(230,126,34,0.1)',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
