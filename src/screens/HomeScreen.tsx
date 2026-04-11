@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,25 +6,24 @@ import {
   Pressable,
   TextInput,
   FlatList,
-  Dimensions,
   Platform,
   ActivityIndicator,
   Keyboard,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, { FadeInDown, FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withRepeat, withTiming, runOnJS } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows } from '../constants';
 import { GlassView } from '../components/ui/GlassView';
 import { SUGGESTIONS_SHORT } from '../data';
 import { useAppStore } from '../store/useAppStore';
-import { getCurrentLocation, reverseGeocode, autocompleteAddress, getPlaceDetails } from '../services/geocoding';
+import { getPlaceDetails } from '../services/geocoding';
+import { useGeolocation, useAddressSearch, usePinMode } from '../hooks';
 import type { PlacePrediction } from '../services/geocoding';
 
 type SearchField = 'departure' | 'destination';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const DEFAULT_REGION = {
   latitude: 48.9478,
@@ -34,6 +33,15 @@ const DEFAULT_REGION = {
 };
 
 const SHEET_SUGGESTIONS = SUGGESTIONS_SHORT.filter((s) => s.key !== 'carte');
+
+// Placeholder neutre en attendant les vrais designs (icones custom a venir)
+const ICON_MAP: Record<string, string> = {
+  home: '⌂',
+  work: '◆',
+  pin: '●',
+  map: '◎',
+};
+const iconForKey = (icon: string) => ICON_MAP[icon] || '●';
 
 interface HomeScreenProps {
   onOpenDrawer: () => void;
@@ -45,34 +53,26 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const inputRef = useRef<TextInput>(null);
+  const departureInputRef = useRef<TextInput>(null);
+
+  const setSelectedTrip = useAppStore((s) => s.setSelectedTrip);
+  const setDynamicTrip = useAppStore((s) => s.setDynamicTrip);
+
+  // ── Hooks ──
+  const geo = useGeolocation(mapRef);
+  const pin = usePinMode();
+  const autoSearch = useAddressSearch(geo.userLocation);
+
+  // ── Search state ──
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeField, setActiveField] = useState<SearchField>('destination');
   const [departureQuery, setDepartureQuery] = useState('');
   const [customDeparture, setCustomDeparture] = useState<{ label: string; latitude: number; longitude: number } | null>(null);
-  const departureInputRef = useRef<TextInput>(null);
-  const setSelectedTrip = useAppStore((s) => s.setSelectedTrip);
-  const setDynamicTrip = useAppStore((s) => s.setDynamicTrip);
 
-  // Geolocation state
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [locationLoading, setLocationLoading] = useState(true);
-  const [currentAddress, setCurrentAddress] = useState<string>('Position actuelle');
-
-  // Drag & drop pin state
-  const [pinMode, setPinMode] = useState(false);
-  const [pinCoord, setPinCoord] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [pinAddress, setPinAddress] = useState<{ label: string; sub: string } | null>(null);
-  const [pinLoading, setPinLoading] = useState(false);
-
-  // Autocomplete state
-  const [autoResults, setAutoResults] = useState<PlacePrediction[]>([]);
-  const [autoLoading, setAutoLoading] = useState(false);
-  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Pulse animation
+  // ── Pulse animation ──
   const pulseScale = useSharedValue(1);
-  useEffect(() => {
+  React.useEffect(() => {
     pulseScale.value = withRepeat(withTiming(1.6, { duration: 1500 }), -1, true);
   }, [pulseScale]);
   const pulseStyle = useAnimatedStyle(() => ({
@@ -80,136 +80,87 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
     opacity: 2 - pulseScale.value,
   }));
 
-  useEffect(() => {
-    (async () => {
-      setLocationLoading(true);
-      const loc = await getCurrentLocation();
-      if (loc) {
-        setUserLocation(loc);
-        const addr = await reverseGeocode(loc.latitude, loc.longitude);
-        setCurrentAddress(addr.label);
-        mapRef.current?.animateToRegion({ ...loc, latitudeDelta: 0.015, longitudeDelta: 0.015 }, 800);
-      }
-      setLocationLoading(false);
-    })();
-  }, []);
-
+  // ── Recenter (also exits pin mode) ──
   const handleLocateMe = useCallback(async () => {
-    // Exit pin mode if active so the user marker becomes visible again
-    if (pinMode) {
-      setPinMode(false);
-      setPinCoord(null);
-      setPinAddress(null);
-    }
-    setLocationLoading(true);
-    const loc = await getCurrentLocation();
-    if (loc) {
-      setUserLocation(loc);
-      const addr = await reverseGeocode(loc.latitude, loc.longitude);
-      setCurrentAddress(addr.label);
-      mapRef.current?.animateToRegion({ ...loc, latitudeDelta: 0.015, longitudeDelta: 0.015 }, 600);
-    }
-    setLocationLoading(false);
-  }, [pinMode]);
+    if (pin.active) pin.exit();
+    await geo.recenter();
+  }, [pin.active, pin.exit, geo.recenter]);
 
-  const handlePinDragEnd = useCallback(async (coord: { latitude: number; longitude: number }) => {
-    setPinCoord(coord);
-    setPinLoading(true);
-    const addr = await reverseGeocode(coord.latitude, coord.longitude);
-    setPinAddress(addr);
-    setPinLoading(false);
-  }, []);
-
-  const handleMapLongPress = useCallback((e: any) => {
-    const coord = e.nativeEvent.coordinate;
-    setPinMode(true);
-    setPinCoord(coord);
-    handlePinDragEnd(coord);
-  }, [handlePinDragEnd]);
-
+  // ── Pin mode enter ──
   const enterPinMode = useCallback(() => {
-    setPinMode(true);
     setSearchVisible(false);
-    const center = userLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude };
-    setPinCoord(center);
-    handlePinDragEnd(center);
-  }, [userLocation, handlePinDragEnd]);
+    const center = geo.userLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude };
+    pin.enter(center);
+  }, [geo.userLocation, pin.enter]);
 
-  // Confirm pin destination → navigate to compare with dynamic trip
+  // ── Pin confirm → compare ──
   const confirmPinDestination = useCallback(() => {
-    if (!pinCoord || !pinAddress) return;
-    setPinMode(false);
+    if (!pin.coord || !pin.address) return;
+    pin.exit();
     setDynamicTrip({
-      from: currentAddress,
-      to: pinAddress.label,
-      label: pinAddress.label,
-      latitude: pinCoord.latitude,
-      longitude: pinCoord.longitude,
+      from: geo.address,
+      to: pin.address.label,
+      label: pin.address.label,
+      latitude: pin.coord.latitude,
+      longitude: pin.coord.longitude,
     });
     onNavigateCompare('__dynamic__');
-  }, [pinCoord, pinAddress, currentAddress, setDynamicTrip, onNavigateCompare]);
+  }, [pin.coord, pin.address, geo.address, setDynamicTrip, onNavigateCompare, pin.exit]);
 
+  // ── Search open / close ──
   const openSearch = useCallback(() => {
     setSearchVisible(true);
     setTimeout(() => inputRef.current?.focus(), 300);
   }, []);
 
+  // ── Swipe up gesture on bottom sheet to open search ──
+  const sheetSwipeUp = useMemo(() =>
+    Gesture.Pan()
+      .onEnd((e) => {
+        if (e.translationY < -30) runOnJS(openSearch)();
+      }),
+    [openSearch],
+  );
+
   const closeSearch = useCallback(() => {
     setSearchVisible(false);
     setSearchQuery('');
     setDepartureQuery('');
-    setAutoResults([]);
+    autoSearch.clear();
     setActiveField('destination');
     Keyboard.dismiss();
-  }, []);
+  }, [autoSearch.clear]);
 
+  // ── Field swap ──
   const handleSwapFields = useCallback(() => {
     if (!customDeparture && !searchQuery) return;
-    // Swap departure and destination
-    const prevDepartureLabel = customDeparture?.label || currentAddress;
-    const prevDestQuery = searchQuery;
-    setSearchQuery(prevDepartureLabel === currentAddress ? '' : prevDepartureLabel);
-    if (prevDestQuery) {
-      setCustomDeparture(null); // Will need coords but for UX we set label
-      setDepartureQuery('');
-    } else {
-      setCustomDeparture(null);
-    }
-  }, [customDeparture, searchQuery, currentAddress]);
+    const prevDepartureLabel = customDeparture?.label || geo.address;
+    setSearchQuery(prevDepartureLabel === geo.address ? '' : prevDepartureLabel);
+    setCustomDeparture(null);
+    setDepartureQuery('');
+  }, [customDeparture, searchQuery, geo.address]);
 
-  // Autocomplete with debounce — works for both departure and destination
+  // ── Search text change (debounced autocomplete) ──
   const handleSearchChange = useCallback((text: string, field: SearchField = 'destination') => {
-    if (field === 'departure') {
-      setDepartureQuery(text);
-    } else {
-      setSearchQuery(text);
-    }
-    if (autoTimer.current) clearTimeout(autoTimer.current);
-    if (text.length < 2) { setAutoResults([]); setAutoLoading(false); return; }
-    setAutoLoading(true);
-    autoTimer.current = setTimeout(async () => {
-      const results = await autocompleteAddress(text, userLocation?.latitude, userLocation?.longitude);
-      setAutoResults(results);
-      setAutoLoading(false);
-    }, 350);
-  }, [userLocation]);
+    if (field === 'departure') setDepartureQuery(text);
+    else setSearchQuery(text);
+    autoSearch.search(text);
+  }, [autoSearch.search]);
 
-  // Handle autocomplete result → get coords → navigate to compare (or set departure)
+  // ── Autocomplete result press ──
   const handleAutoResultPress = useCallback(async (prediction: PlacePrediction) => {
     Keyboard.dismiss();
     const details = await getPlaceDetails(prediction.placeId);
     if (!details) return;
 
     if (activeField === 'departure') {
-      // Set custom departure
       setCustomDeparture({ label: prediction.label, latitude: details.latitude, longitude: details.longitude });
       setDepartureQuery('');
-      setAutoResults([]);
+      autoSearch.clear();
       setActiveField('destination');
       setTimeout(() => inputRef.current?.focus(), 200);
     } else {
-      // Destination selected → navigate to compare
-      const departureLabel = customDeparture?.label || currentAddress;
+      const departureLabel = customDeparture?.label || geo.address;
       closeSearch();
       setDynamicTrip({
         from: departureLabel,
@@ -220,8 +171,9 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
       });
       onNavigateCompare('__dynamic__');
     }
-  }, [activeField, closeSearch, currentAddress, customDeparture, setDynamicTrip, onNavigateCompare]);
+  }, [activeField, closeSearch, geo.address, customDeparture, setDynamicTrip, onNavigateCompare, autoSearch.clear]);
 
+  // ── Suggestions filter ──
   const filteredSuggestions = useMemo(() => {
     if (!searchQuery) return SUGGESTIONS_SHORT;
     const q = searchQuery.toLowerCase();
@@ -237,23 +189,13 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
     onNavigateCompare(key);
   }, [setSelectedTrip, onNavigateCompare, enterPinMode, closeSearch]);
 
-  // Placeholder neutre en attendant les vrais designs (icones custom a venir)
-  const iconForKey = (icon: string) => {
-    switch (icon) {
-      case 'home': return '⌂';
-      case 'work': return '◆';
-      case 'pin': return '●';
-      case 'map': return '◎';
-      default: return '●';
-    }
-  };
-
-  const initialRegion = userLocation
-    ? { ...userLocation, latitudeDelta: 0.015, longitudeDelta: 0.015 }
+  // ── Derived ──
+  const initialRegion = geo.userLocation
+    ? { ...geo.userLocation, latitudeDelta: 0.015, longitudeDelta: 0.015 }
     : DEFAULT_REGION;
 
   const activeQuery = activeField === 'departure' ? departureQuery : searchQuery;
-  const showAutoResults = activeQuery.length >= 2 && (autoResults.length > 0 || autoLoading);
+  const showAutoResults = activeQuery.length >= 2 && (autoSearch.results.length > 0 || autoSearch.loading);
 
   return (
     <View style={styles.container}>
@@ -267,16 +209,16 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          zoomEnabled={true}
-          zoomTapEnabled={true}
+          zoomEnabled
+          zoomTapEnabled
           zoomControlEnabled={Platform.OS === 'android'}
-          scrollEnabled={true}
-          rotateEnabled={true}
-          pitchEnabled={true}
-          onLongPress={handleMapLongPress}
+          scrollEnabled
+          rotateEnabled
+          pitchEnabled
+          onLongPress={pin.handleMapLongPress}
         >
-          {userLocation && !pinMode && (
-            <Marker coordinate={userLocation} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
+          {geo.userLocation && !pin.active && (
+            <Marker coordinate={geo.userLocation} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
               <View style={styles.userMarkerContainer}>
                 <Animated.View style={[styles.userMarkerPulse, pulseStyle]} />
                 <View style={styles.userMarkerDot} />
@@ -284,11 +226,11 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
             </Marker>
           )}
 
-          {pinMode && pinCoord && (
+          {pin.active && pin.coord && (
             <Marker
-              coordinate={pinCoord}
+              coordinate={pin.coord}
               draggable
-              onDragEnd={(e) => handlePinDragEnd(e.nativeEvent.coordinate)}
+              onDragEnd={(e) => pin.handleDragEnd(e.nativeEvent.coordinate)}
               anchor={{ x: 0.5, y: 1 }}
             >
               <View style={styles.destPinContainer}>
@@ -308,32 +250,32 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
           </GlassView>
         </Pressable>
 
-        {/* Locate me — bottom right above sheet */}
+        {/* Locate me */}
         <Pressable style={styles.locateBtn} onPress={handleLocateMe}>
           <GlassView variant="button" style={styles.locateBtnGlass}>
-            {locationLoading ? <ActivityIndicator size="small" color={Colors.teal} /> : <Text style={styles.locateBtnIcon}>◎</Text>}
+            {geo.loading ? <ActivityIndicator size="small" color={Colors.teal} /> : <Text style={styles.locateBtnIcon}>◎</Text>}
           </GlassView>
         </Pressable>
 
         {/* Pin mode banner */}
-        {pinMode && pinAddress && (
+        {pin.active && pin.address && (
           <Animated.View entering={FadeIn.duration(250)} style={[styles.pinBanner, { top: insets.top + 64 }]}>
             <GlassView variant="panel" style={styles.pinBannerGlass}>
               <View style={styles.pinBannerContent}>
                 <View style={styles.pinBannerInfo}>
-                  {pinLoading ? (
+                  {pin.loading ? (
                     <ActivityIndicator size="small" color={Colors.teal} />
                   ) : (
                     <>
-                      <Text style={styles.pinBannerLabel} numberOfLines={1}>{pinAddress.label}</Text>
-                      <Text style={styles.pinBannerSub} numberOfLines={1}>{pinAddress.sub}</Text>
+                      <Text style={styles.pinBannerLabel} numberOfLines={1}>{pin.address.label}</Text>
+                      <Text style={styles.pinBannerSub} numberOfLines={1}>{pin.address.sub}</Text>
                     </>
                   )}
                 </View>
                 <Pressable style={styles.pinBannerConfirm} onPress={confirmPinDestination}>
                   <Text style={styles.pinBannerConfirmText}>Comparer</Text>
                 </Pressable>
-                <Pressable style={styles.pinBannerCancel} onPress={() => { setPinMode(false); setPinCoord(null); setPinAddress(null); }}>
+                <Pressable style={styles.pinBannerCancel} onPress={pin.exit}>
                   <Text style={styles.pinBannerCancelText}>✕</Text>
                 </Pressable>
               </View>
@@ -341,8 +283,8 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
           </Animated.View>
         )}
 
-        {/* Pin mode: tap to place instruction */}
-        {pinMode && !pinAddress && (
+        {/* Pin mode instruction */}
+        {pin.active && !pin.address && (
           <Animated.View entering={FadeIn.duration(300)} style={[styles.pinInstruction, { top: insets.top + 64 }]}>
             <GlassView variant="panel" style={styles.pinInstructionGlass}>
               <Text style={styles.pinInstructionText}>Appuyez longuement sur la carte pour placer un pin</Text>
@@ -352,7 +294,8 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
       </View>
 
       {/* ═══ BOTTOM SHEET ═══ */}
-      {!pinMode && !searchVisible && (
+      {!pin.active && !searchVisible && (
+        <GestureDetector gesture={sheetSwipeUp}>
         <View style={[styles.sheet, { paddingBottom: insets.bottom || 12 }]}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetContent}>
@@ -382,6 +325,7 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
             })}
           </View>
         </View>
+        </GestureDetector>
       )}
 
       {/* ═══ SEARCH OVERLAY ═══ */}
@@ -395,14 +339,14 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
           <View style={styles.tripFieldsContainer}>
             <Pressable
               style={[styles.departureRow, activeField === 'departure' && styles.departureRowActive]}
-              onPress={() => { setActiveField('departure'); setAutoResults([]); setTimeout(() => departureInputRef.current?.focus(), 200); }}
+              onPress={() => { setActiveField('departure'); autoSearch.clear(); setTimeout(() => departureInputRef.current?.focus(), 200); }}
             >
               <View style={styles.departureDot} />
               {activeField === 'departure' ? (
                 <TextInput
                   ref={departureInputRef}
                   style={styles.departureInput}
-                  placeholder={customDeparture?.label || currentAddress}
+                  placeholder={customDeparture?.label || geo.address}
                   placeholderTextColor={Colors.g400}
                   value={departureQuery}
                   onChangeText={(t) => handleSearchChange(t, 'departure')}
@@ -411,11 +355,11 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
                 />
               ) : (
                 <Text style={styles.departureText} numberOfLines={1}>
-                  {customDeparture?.label || `${currentAddress} — position actuelle`}
+                  {customDeparture?.label || `${geo.address} — position actuelle`}
                 </Text>
               )}
               {activeField === 'departure' && departureQuery.length > 0 && (
-                <Pressable onPress={() => { setDepartureQuery(''); setAutoResults([]); }}>
+                <Pressable onPress={() => { setDepartureQuery(''); autoSearch.clear(); }}>
                   <Text style={styles.clearBtn}>✕</Text>
                 </Pressable>
               )}
@@ -438,12 +382,12 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
                 placeholderTextColor={Colors.g400}
                 value={searchQuery}
                 onChangeText={(t) => handleSearchChange(t, 'destination')}
-                onFocus={() => { setActiveField('destination'); setAutoResults([]); }}
+                onFocus={() => { setActiveField('destination'); autoSearch.clear(); }}
                 autoFocus={activeField === 'destination'}
                 returnKeyType="search"
               />
               {searchQuery.length > 0 && (
-                <Pressable onPress={() => { setSearchQuery(''); setAutoResults([]); }}>
+                <Pressable onPress={() => { setSearchQuery(''); autoSearch.clear(); }}>
                   <Text style={styles.clearBtn}>✕</Text>
                 </Pressable>
               )}
@@ -457,11 +401,11 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
           {/* Autocomplete results */}
           {showAutoResults ? (
             <FlatList
-              data={autoResults}
+              data={autoSearch.results}
               keyExtractor={(item) => item.placeId}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.searchListContent}
-              ListHeaderComponent={autoLoading && autoResults.length === 0 ? (
+              ListHeaderComponent={autoSearch.loading && autoSearch.results.length === 0 ? (
                 <View style={styles.autoLoadingRow}>
                   <ActivityIndicator size="small" color={Colors.teal} />
                   <Text style={styles.autoLoadingText}>Recherche en cours…</Text>

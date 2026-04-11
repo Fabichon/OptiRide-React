@@ -1,4 +1,4 @@
-import type { Ride } from '../types';
+import type { Ride, SortMode } from '../types';
 
 export function sortByPrice(rides: Ride[]): Ride[] {
   return [...rides].sort((a, b) => a.price - b.price);
@@ -8,18 +8,12 @@ export function sortByWaitTime(rides: Ride[]): Ride[] {
   return [...rides].sort((a, b) => a.wait - b.wait);
 }
 
-export function sortByGreenScore(rides: Ride[]): Ride[] {
-  return [...rides].sort((a, b) => b.greenScore - a.greenScore);
-}
-
-export function sortRides(rides: Ride[], mode: 'cheap' | 'fast' | 'green'): Ride[] {
+export function sortRides(rides: Ride[], mode: SortMode): Ride[] {
   switch (mode) {
     case 'cheap':
       return sortByPrice(rides);
     case 'fast':
       return sortByWaitTime(rides);
-    case 'green':
-      return sortByGreenScore(rides);
   }
 }
 
@@ -45,7 +39,7 @@ export function filterByCategory(rides: Ride[], category: string): Ride[] {
 
 /**
  * Compute a composite "OptiRide score" for ranking.
- * Weights: price 40%, wait time 30%, green score 30%
+ * Weights: price 55%, wait time 45%
  */
 function normalize(value: number, min: number, max: number): number {
   if (max === min) return 1;
@@ -57,24 +51,17 @@ export function getOptiRideSelection(rides: Ride[], count: number = 3): Ride[] {
 
   const prices = rides.map((r) => r.price);
   const waits = rides.map((r) => r.wait);
-  const greens = rides.map((r) => r.greenScore);
 
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
   const minWait = Math.min(...waits);
   const maxWait = Math.max(...waits);
-  const minGreen = Math.min(...greens);
-  const maxGreen = Math.max(...greens);
 
   const scored = rides.map((r) => {
-    // Lower price is better (invert)
     const priceScore = 1 - normalize(r.price, minPrice, maxPrice);
-    // Lower wait is better (invert)
     const waitScore = 1 - normalize(r.wait, minWait, maxWait);
-    // Higher green is better
-    const greenScoreNorm = normalize(r.greenScore, minGreen, maxGreen);
 
-    const optiScore = priceScore * 0.4 + waitScore * 0.3 + greenScoreNorm * 0.3;
+    const optiScore = priceScore * 0.55 + waitScore * 0.45;
     return { ride: r, optiScore };
   });
 

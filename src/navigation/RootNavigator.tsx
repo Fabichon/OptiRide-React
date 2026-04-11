@@ -11,9 +11,7 @@ import { CompareScreen } from '../screens/CompareScreen';
 import { AccountsScreen } from '../screens/AccountsScreen';
 import { RedirectModal } from '../screens/RedirectModal';
 import { DrawerContent } from '../screens/DrawerContent';
-import { SettingsSheet } from '../screens/SettingsSheet';
 import { HistorySheet } from '../screens/HistorySheet';
-import { InviteSheet } from '../screens/InviteSheet';
 import { useAppStore } from '../store/useAppStore';
 import { TRIPS } from '../data';
 import type { Ride } from '../types';
@@ -24,9 +22,7 @@ const Drawer = createDrawerNavigator();
 function HomeStackNavigator() {
   const [redirectVisible, setRedirectVisible] = useState(false);
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
-  const [settingsVisible, setSettingsVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
-  const [inviteVisible, setInviteVisible] = useState(false);
   const navigationRef = useRef<any>(null);
 
   const pendingDrawerAction = useAppStore((s) => s.pendingDrawerAction);
@@ -35,14 +31,8 @@ function HomeStackNavigator() {
   useEffect(() => {
     if (!pendingDrawerAction) return;
     switch (pendingDrawerAction) {
-      case 'settings':
-        setSettingsVisible(true);
-        break;
       case 'history':
         setHistoryVisible(true);
-        break;
-      case 'invite':
-        setInviteVisible(true);
         break;
     }
     setPendingDrawerAction(null);
@@ -89,7 +79,10 @@ function HomeStackNavigator() {
         </Stack.Screen>
         <Stack.Screen name="Accounts">
           {({ navigation }) => (
-            <AccountsScreen onBack={() => navigation.goBack()} />
+            <AccountsScreen onBack={() => {
+              navigation.goBack();
+              setTimeout(() => navigation.openDrawer(), 350);
+            }} />
           )}
         </Stack.Screen>
       </Stack.Navigator>
@@ -99,17 +92,9 @@ function HomeStackNavigator() {
         ride={selectedRide}
         onClose={() => setRedirectVisible(false)}
       />
-      <SettingsSheet
-        visible={settingsVisible}
-        onClose={() => closeModalAndOpenDrawer(setSettingsVisible)}
-      />
       <HistorySheet
         visible={historyVisible}
         onClose={() => closeModalAndOpenDrawer(setHistoryVisible)}
-      />
-      <InviteSheet
-        visible={inviteVisible}
-        onClose={() => closeModalAndOpenDrawer(setInviteVisible)}
       />
     </>
   );

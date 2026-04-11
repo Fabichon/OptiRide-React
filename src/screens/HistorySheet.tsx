@@ -2,16 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Modal, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProviderAvatar } from '../components/ui/ProviderAvatar';
-import { Colors, Shadows } from '../constants';
+import { Colors, Shadows, getProviderMeta } from '../constants';
 import { HISTORY } from '../data';
-import { computeHistoryStats, rideSavings, rideCO2Savings } from '../services/co2Calculator';
-
-const PROVIDER_META: Record<string, { letter: string; color: string }> = {
-  uber:    { letter: 'U', color: '#000000' },
-  bolt:    { letter: 'B', color: '#34D186' },
-  heetch:  { letter: 'H', color: '#E84393' },
-  freenow: { letter: 'F', color: '#E85454' },
-};
 
 interface HistorySheetProps {
   visible: boolean;
@@ -20,7 +12,7 @@ interface HistorySheetProps {
 
 export function HistorySheet({ visible, onClose }: HistorySheetProps) {
   const insets = useSafeAreaInsets();
-  const stats = computeHistoryStats(HISTORY);
+  const rideCount = HISTORY.length;
 
   // Group by date
   const grouped: Record<string, typeof HISTORY> = {};
@@ -42,16 +34,8 @@ export function HistorySheet({ visible, onClose }: HistorySheetProps) {
 
         {/* Summary */}
         <View style={styles.summaryRow}>
-          <View style={[styles.summaryCard, { backgroundColor: Colors.greenSoft }]}>
-            <Text style={[styles.summaryValue, { color: Colors.green }]}>{stats.totalSavings.toFixed(2)} €</Text>
-            <Text style={styles.summaryLabel}>Économisé</Text>
-          </View>
-          <View style={[styles.summaryCard, { backgroundColor: Colors.tealSoft }]}>
-            <Text style={[styles.summaryValue, { color: Colors.teal }]}>{stats.totalCO2Saved.toFixed(1)} kg</Text>
-            <Text style={styles.summaryLabel}>CO₂ évité</Text>
-          </View>
           <View style={[styles.summaryCard, { backgroundColor: Colors.g50 }]}>
-            <Text style={[styles.summaryValue, { color: Colors.navy }]}>{stats.rideCount}</Text>
+            <Text style={[styles.summaryValue, { color: Colors.navy }]}>{rideCount}</Text>
             <Text style={styles.summaryLabel}>Courses</Text>
           </View>
         </View>
@@ -62,9 +46,7 @@ export function HistorySheet({ visible, onClose }: HistorySheetProps) {
             <View key={date}>
               <Text style={styles.dateHeader}>{date}</Text>
               {entries.map((entry) => {
-                const meta = PROVIDER_META[entry.provider] || { letter: '?', color: Colors.g400 };
-                const saved = rideSavings(entry);
-                const co2 = rideCO2Savings(entry.provider, entry.km);
+                const meta = getProviderMeta(entry.provider);
 
                 return (
                   <View key={entry.id} style={styles.card}>
@@ -75,12 +57,6 @@ export function HistorySheet({ visible, onClose }: HistorySheetProps) {
                     </View>
                     <View style={styles.cardRight}>
                       <Text style={styles.cardPrice}>{entry.price.toFixed(2)} €</Text>
-                      {saved > 0 && (
-                        <Text style={styles.savedBadge}>-{saved.toFixed(2)} €</Text>
-                      )}
-                      {co2 > 0 && (
-                        <Text style={styles.co2Badge}>-{co2.toFixed(1)} kg CO₂</Text>
-                      )}
                     </View>
                   </View>
                 );
@@ -181,23 +157,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: Colors.navy,
-  },
-  savedBadge: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.green,
-    backgroundColor: Colors.greenSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  co2Badge: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#E67E22',
-    backgroundColor: 'rgba(230,126,34,0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
   },
 });

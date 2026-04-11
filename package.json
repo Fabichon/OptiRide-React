@@ -4,6 +4,10 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
+    "phone": "expo start --lan --port 8082",
+    "phone:clear": "expo start --lan --port 8082 --clear",
+    "phone:tunnel": "expo start --tunnel --port 8082",
+    "phone:tunnel:clear": "expo start --tunnel --port 8082 --clear",
     "android": "expo run:android",
     "android:go": "powershell -ExecutionPolicy Bypass -File ./scripts/start-android-expo.ps1 -Port 8081 -Clear",
     "android:go:fast": "powershell -ExecutionPolicy Bypass -File ./scripts/start-android-expo.ps1 -Port 8081",

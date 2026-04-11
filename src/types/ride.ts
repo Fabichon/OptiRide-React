@@ -11,7 +11,6 @@ export interface Ride {
   badge?: string | null;
   external: boolean;
   cash?: boolean;
-  greenScore: number;
 }
 
 export interface Trip {
@@ -24,6 +23,6 @@ export interface Trip {
 
 export type TripKey = string;
 
-export type SortMode = 'cheap' | 'fast' | 'green';
+export type SortMode = 'cheap' | 'fast';
 
 export type Category = 'Tous' | 'Standard' | 'Premium' | 'XL' | 'Femme';

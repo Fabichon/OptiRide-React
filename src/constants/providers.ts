@@ -19,9 +19,8 @@ export const PROVIDER_MAP = Object.fromEntries(
   PROVIDERS.map((p) => [p.id, p])
 ) as Record<string, ProviderInfo>;
 
-export const CO2_G_KM: Record<string, number> = {
-  bolt: 85,
-  uber: 118,
-  heetch: 108,
-  freenow: 132,
-};
+/** Lookup helper with fallback — avoids duplicating PROVIDER_META across screens */
+export function getProviderMeta(id: string): { letter: string; color: string } {
+  const p = PROVIDER_MAP[id] || PROVIDER_MAP[id.toLowerCase()];
+  return p ? { letter: p.letter, color: p.color } : { letter: '?', color: '#999' };
+}

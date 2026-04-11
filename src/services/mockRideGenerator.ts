@@ -45,20 +45,19 @@ const SERVICES: Array<{
   waitRange: [number, number];
   external: boolean;
   cash?: boolean;
-  greenScore: number;
 }> = [
-  { provider: 'Uber',     color: Colors.uber,    letter: 'U', name: 'UberX',              pax: '1-4', baseFare: 2.50, perKm: 1.10, waitRange: [2, 5],   external: true,  greenScore: 62 },
-  { provider: 'Bolt',     color: Colors.bolt,    letter: 'B', name: 'Bolt Lite',           pax: '1-4', baseFare: 2.00, perKm: 0.95, waitRange: [3, 6],   external: true,  greenScore: 88 },
-  { provider: 'Heetch',   color: Colors.heetch,  letter: 'H', name: 'Heetch Standard',     pax: '1-4', baseFare: 2.80, perKm: 1.20, waitRange: [5, 10],  external: false, cash: true, greenScore: 50 },
-  { provider: 'FREE NOW', color: Colors.freeNow, letter: 'F', name: 'FREE NOW Priority',   pax: '1-4', baseFare: 3.00, perKm: 1.30, waitRange: [3, 7],   external: true,  greenScore: 70 },
-  { provider: 'Bolt',     color: Colors.bolt,    letter: 'B', name: 'Bolt Comfort',        pax: '1-4', baseFare: 3.50, perKm: 1.40, waitRange: [4, 8],   external: true,  greenScore: 74 },
-  { provider: 'Uber',     color: Colors.uber,    letter: 'U', name: 'Wait & Save',         pax: '1-4', baseFare: 1.80, perKm: 0.85, waitRange: [8, 15],  external: true,  greenScore: 95 },
-  { provider: 'Bolt',     color: Colors.bolt,    letter: 'B', name: 'Bolt Green',          pax: '1-4', baseFare: 2.20, perKm: 1.05, waitRange: [5, 10],  external: true,  greenScore: 97 },
-  { provider: 'FREE NOW', color: Colors.freeNow, letter: 'F', name: 'FREE NOW Eco',        pax: '1-4', baseFare: 2.60, perKm: 1.15, waitRange: [6, 12],  external: true,  greenScore: 92 },
-  { provider: 'Uber',     color: Colors.uber,    letter: 'U', name: 'UberX Priority',      pax: '1-4', baseFare: 3.20, perKm: 1.35, waitRange: [2, 4],   external: true,  greenScore: 56 },
-  { provider: 'Heetch',   color: Colors.heetch,  letter: 'H', name: 'Heetch XL',           pax: '1-6', baseFare: 4.00, perKm: 1.60, waitRange: [8, 14],  external: false, cash: true, greenScore: 42 },
-  { provider: 'Uber',     color: Colors.uber,    letter: 'U', name: 'Uber Comfort',        pax: '1-4', baseFare: 4.50, perKm: 1.55, waitRange: [4, 8],   external: true,  greenScore: 55 },
-  { provider: 'FREE NOW', color: Colors.freeNow, letter: 'F', name: 'FREE NOW Taxi',       pax: '1-4', baseFare: 2.40, perKm: 1.00, waitRange: [5, 12],  external: true,  greenScore: 65 },
+  { provider: 'Uber',     color: Colors.uber,    letter: 'U', name: 'UberX',              pax: '1-4', baseFare: 2.50, perKm: 1.10, waitRange: [2, 5],   external: true },
+  { provider: 'Bolt',     color: Colors.bolt,    letter: 'B', name: 'Bolt Lite',           pax: '1-4', baseFare: 2.00, perKm: 0.95, waitRange: [3, 6],   external: true },
+  { provider: 'Heetch',   color: Colors.heetch,  letter: 'H', name: 'Heetch Standard',     pax: '1-4', baseFare: 2.80, perKm: 1.20, waitRange: [5, 10],  external: false, cash: true },
+  { provider: 'FREE NOW', color: Colors.freeNow, letter: 'F', name: 'FREE NOW Priority',   pax: '1-4', baseFare: 3.00, perKm: 1.30, waitRange: [3, 7],   external: true },
+  { provider: 'Bolt',     color: Colors.bolt,    letter: 'B', name: 'Bolt Comfort',        pax: '1-4', baseFare: 3.50, perKm: 1.40, waitRange: [4, 8],   external: true },
+  { provider: 'Uber',     color: Colors.uber,    letter: 'U', name: 'Wait & Save',         pax: '1-4', baseFare: 1.80, perKm: 0.85, waitRange: [8, 15],  external: true },
+  { provider: 'Bolt',     color: Colors.bolt,    letter: 'B', name: 'Bolt Green',          pax: '1-4', baseFare: 2.20, perKm: 1.05, waitRange: [5, 10],  external: true },
+  { provider: 'FREE NOW', color: Colors.freeNow, letter: 'F', name: 'FREE NOW Eco',        pax: '1-4', baseFare: 2.60, perKm: 1.15, waitRange: [6, 12],  external: true },
+  { provider: 'Uber',     color: Colors.uber,    letter: 'U', name: 'UberX Priority',      pax: '1-4', baseFare: 3.20, perKm: 1.35, waitRange: [2, 4],   external: true },
+  { provider: 'Heetch',   color: Colors.heetch,  letter: 'H', name: 'Heetch XL',           pax: '1-6', baseFare: 4.00, perKm: 1.60, waitRange: [8, 14],  external: false, cash: true },
+  { provider: 'Uber',     color: Colors.uber,    letter: 'U', name: 'Uber Comfort',        pax: '1-4', baseFare: 4.50, perKm: 1.55, waitRange: [4, 8],   external: true },
+  { provider: 'FREE NOW', color: Colors.freeNow, letter: 'F', name: 'FREE NOW Taxi',       pax: '1-4', baseFare: 2.40, perKm: 1.00, waitRange: [5, 12],  external: true },
 ];
 
 function randomInRange(min: number, max: number): number {
@@ -94,7 +93,6 @@ export function generateMockRides(
       badge: hasBadge ? 'Promo' : null,
       external: svc.external,
       cash: svc.cash,
-      greenScore: svc.greenScore,
     };
   });
 

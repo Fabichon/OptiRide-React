@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Shadows } from '../constants';
 import { useAppStore } from '../store/useAppStore';
 import { HISTORY } from '../data';
-import { computeHistoryStats } from '../services/co2Calculator';
 
 interface DrawerContentProps {
   onClose: () => void;
@@ -12,8 +11,6 @@ interface DrawerContentProps {
 }
 
 const MENU_ITEMS = [
-  { key: 'invite',   icon: '🎁', label: 'Inviter un ami',        sub: 'Parrainez et gagnez' },
-  { key: 'settings', icon: '⚙️', label: 'Paramètres',            sub: 'Notifications, apparence…' },
   { key: 'accounts', icon: '🔗', label: 'Lier mes comptes VTC',  sub: 'Uber, Bolt, Heetch…' },
   { key: 'history',  icon: '📋', label: 'Historique des courses', sub: 'Vos trajets passés' },
 ];
@@ -21,7 +18,7 @@ const MENU_ITEMS = [
 export function DrawerContent({ onClose, onNavigate }: DrawerContentProps) {
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
-  const stats = computeHistoryStats(HISTORY);
+  const rideCount = HISTORY.length;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -36,12 +33,8 @@ export function DrawerContent({ onClose, onNavigate }: DrawerContentProps) {
         {/* Stats pills - no rating */}
         <View style={styles.statsRow}>
           <View style={styles.statPill}>
-            <Text style={styles.statValue}>{stats.rideCount}</Text>
+            <Text style={styles.statValue}>{rideCount}</Text>
             <Text style={styles.statLabel}>courses</Text>
-          </View>
-          <View style={styles.statPill}>
-            <Text style={styles.statValue}>{stats.totalSavings.toFixed(0)} €</Text>
-            <Text style={styles.statLabel}>économies</Text>
           </View>
         </View>
       </View>
