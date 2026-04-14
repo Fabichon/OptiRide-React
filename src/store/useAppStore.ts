@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loadTokens, saveTokens } from '../services/secureTokenStore';
 import type { SortMode, ProviderStatus, ProviderToken } from '../types';
 
 interface Preferences {
@@ -19,6 +20,8 @@ interface DynamicTrip {
   label: string;
   latitude: number;
   longitude: number;
+  fromLat: number;
+  fromLng: number;
 }
 
 interface AppState {
@@ -39,6 +42,8 @@ interface AppState {
   providerTokens: Record<string, ProviderToken>;
   setProviderStatus: (id: string, status: ProviderStatus) => void;
   setProviderToken: (id: string, token: ProviderToken | null) => void;
+  removeProviderToken: (id: string) => void;
+  hydrateProviderTokens: () => Promise<void>;
   getConnectedProviderIds: () => string[];
 
   // Preferences
@@ -48,10 +53,6 @@ interface AppState {
   // Drawer action (for communicating between drawer and home stack)
   pendingDrawerAction: string | null;
   setPendingDrawerAction: (action: string | null) => void;
-
-  // Redirect
-  dontShowRedirect: Record<string, boolean>;
-  setDontShowRedirect: (provider: string) => void;
 
   // User
   user: {
@@ -90,7 +91,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           providerStatus: { ...state.providerStatus, [id]: status },
         })),
-      setProviderToken: (id, token) =>
+      setProviderToken: (id, token) => {
         set((state) => {
           const providerTokens = { ...state.providerTokens };
           if (token) {
@@ -98,8 +99,43 @@ export const useAppStore = create<AppState>()(
           } else {
             delete providerTokens[id];
           }
+          // Persist to secure store (fire-and-forget)
+          const serialized: Record<string, string> = {};
+          Object.entries(providerTokens).forEach(([k, v]) => {
+            serialized[k] = JSON.stringify(v);
+          });
+          saveTokens(serialized);
           return { providerTokens };
-        }),
+        });
+      },
+      removeProviderToken: (id) => {
+        set((state) => {
+          const providerTokens = { ...state.providerTokens };
+          delete providerTokens[id];
+          const serialized: Record<string, string> = {};
+          Object.entries(providerTokens).forEach(([k, v]) => {
+            serialized[k] = JSON.stringify(v);
+          });
+          saveTokens(serialized);
+          return { providerTokens };
+        });
+      },
+      hydrateProviderTokens: async () => {
+        try {
+          const raw = await loadTokens();
+          const providerTokens: Record<string, ProviderToken> = {};
+          Object.entries(raw).forEach(([k, v]) => {
+            try {
+              providerTokens[k] = JSON.parse(v) as ProviderToken;
+            } catch {
+              // Skip malformed entries
+            }
+          });
+          set({ providerTokens });
+        } catch {
+          // Silently fail — start with empty tokens
+        }
+      },
       getConnectedProviderIds: (): string[] => {
         return Object.entries(get().providerStatus)
           .filter(([, status]) => status === 'connected')
@@ -125,13 +161,6 @@ export const useAppStore = create<AppState>()(
       pendingDrawerAction: null,
       setPendingDrawerAction: (action: string | null) => set({ pendingDrawerAction: action }),
 
-      // Redirect
-      dontShowRedirect: {},
-      setDontShowRedirect: (provider: string) =>
-        set((state) => ({
-          dontShowRedirect: { ...state.dontShowRedirect, [provider]: true },
-        })),
-
       // User
       user: {
         name: 'Frank',
@@ -144,9 +173,7 @@ export const useAppStore = create<AppState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state): Partial<AppState> => ({
         providerStatus: state.providerStatus,
-        providerTokens: state.providerTokens,
         preferences: state.preferences,
-        dontShowRedirect: state.dontShowRedirect,
       }),
     }
   )

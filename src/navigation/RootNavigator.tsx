@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createDrawerNavigator } from '@react-navigation/drawer';
+import { DrawerActions } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { SplashScreen } from '../screens/SplashScreen';
@@ -43,7 +44,7 @@ function HomeStackNavigator() {
     setter(false);
     // Small delay to let the modal dismiss animation complete before reopening drawer
     setTimeout(() => {
-      navigationRef.current?.openDrawer?.();
+      navigationRef.current?.dispatch(DrawerActions.openDrawer());
     }, 350);
   }, []);
 
@@ -63,7 +64,6 @@ function HomeStackNavigator() {
               <HomeScreen
                 onOpenDrawer={() => navigation.openDrawer()}
                 onNavigateCompare={(tripKey) => navigation.navigate('Compare', { tripKey })}
-                onNavigateMapPin={() => navigation.navigate('Compare', { tripKey: '__dynamic__' })}
               />
             );
           }}
@@ -81,7 +81,7 @@ function HomeStackNavigator() {
           {({ navigation }) => (
             <AccountsScreen onBack={() => {
               navigation.goBack();
-              setTimeout(() => navigation.openDrawer(), 350);
+              setTimeout(() => navigation.dispatch(DrawerActions.openDrawer()), 350);
             }} />
           )}
         </Stack.Screen>
@@ -125,6 +125,10 @@ function MainDrawerNavigator() {
 
 export function RootNavigator() {
   const [splashDone, setSplashDone] = useState(false);
+
+  useEffect(() => {
+    useAppStore.getState().hydrateProviderTokens();
+  }, []);
 
   if (!splashDone) {
     return (

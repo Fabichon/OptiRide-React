@@ -59,10 +59,13 @@ export async function fetchTripRides(
 ): Promise<(Trip & { label?: string; address?: string }) | null> {
   const { dynamicTrip } = useAppStore.getState();
 
-  if (tripKey === '__dynamic__' && dynamicTrip) {
+  if (tripKey === '__dynamic__') {
+    if (!dynamicTrip) {
+      throw new Error('Destination dynamique non définie. Veuillez choisir une destination sur la carte.');
+    }
     return fetchRides({
-      originLat: 48.9478, // Achères
-      originLng: 2.0686,
+      originLat: dynamicTrip.fromLat,
+      originLng: dynamicTrip.fromLng,
       destLat: dynamicTrip.latitude,
       destLng: dynamicTrip.longitude,
       destLabel: dynamicTrip.to,

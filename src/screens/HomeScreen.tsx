@@ -11,16 +11,16 @@ import {
   Keyboard,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, { FadeInDown, FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withRepeat, withTiming, runOnJS } from 'react-native-reanimated';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows } from '../constants';
 import { GlassView } from '../components/ui/GlassView';
 import { SUGGESTIONS_SHORT } from '../data';
 import { useAppStore } from '../store/useAppStore';
-import { getPlaceDetails } from '../services/geocoding';
-import { useGeolocation, useAddressSearch, usePinMode } from '../hooks';
+import { getPlaceDetails, forwardGeocode } from '../services/geocoding';
+import { TRIPS } from '../data';
+import { useGeolocation, useAddressSearch } from '../hooks';
 import type { PlacePrediction } from '../services/geocoding';
 
 type SearchField = 'departure' | 'destination';
@@ -46,10 +46,9 @@ const iconForKey = (icon: string) => ICON_MAP[icon] || '●';
 interface HomeScreenProps {
   onOpenDrawer: () => void;
   onNavigateCompare: (tripKey: string) => void;
-  onNavigateMapPin: () => void;
 }
 
-export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }: HomeScreenProps) {
+export function HomeScreen({ onOpenDrawer, onNavigateCompare }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const inputRef = useRef<TextInput>(null);
@@ -60,7 +59,6 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
 
   // ── Hooks ──
   const geo = useGeolocation(mapRef);
-  const pin = usePinMode();
   const autoSearch = useAddressSearch(geo.userLocation);
 
   // ── Search state ──
@@ -80,47 +78,16 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
     opacity: 2 - pulseScale.value,
   }));
 
-  // ── Recenter (also exits pin mode) ──
+  // ── Recenter ──
   const handleLocateMe = useCallback(async () => {
-    if (pin.active) pin.exit();
     await geo.recenter();
-  }, [pin.active, pin.exit, geo.recenter]);
-
-  // ── Pin mode enter ──
-  const enterPinMode = useCallback(() => {
-    setSearchVisible(false);
-    const center = geo.userLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude };
-    pin.enter(center);
-  }, [geo.userLocation, pin.enter]);
-
-  // ── Pin confirm → compare ──
-  const confirmPinDestination = useCallback(() => {
-    if (!pin.coord || !pin.address) return;
-    pin.exit();
-    setDynamicTrip({
-      from: geo.address,
-      to: pin.address.label,
-      label: pin.address.label,
-      latitude: pin.coord.latitude,
-      longitude: pin.coord.longitude,
-    });
-    onNavigateCompare('__dynamic__');
-  }, [pin.coord, pin.address, geo.address, setDynamicTrip, onNavigateCompare, pin.exit]);
+  }, [geo.recenter]);
 
   // ── Search open / close ──
   const openSearch = useCallback(() => {
     setSearchVisible(true);
     setTimeout(() => inputRef.current?.focus(), 300);
   }, []);
-
-  // ── Swipe up gesture on bottom sheet to open search ──
-  const sheetSwipeUp = useMemo(() =>
-    Gesture.Pan()
-      .onEnd((e) => {
-        if (e.translationY < -30) runOnJS(openSearch)();
-      }),
-    [openSearch],
-  );
 
   const closeSearch = useCallback(() => {
     setSearchVisible(false);
@@ -162,12 +129,17 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
     } else {
       const departureLabel = customDeparture?.label || geo.address;
       closeSearch();
+      const originCoords = customDeparture
+        ? { latitude: customDeparture.latitude, longitude: customDeparture.longitude }
+        : geo.userLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude };
       setDynamicTrip({
         from: departureLabel,
         to: prediction.label,
         label: prediction.label,
         latitude: details.latitude,
         longitude: details.longitude,
+        fromLat: originCoords.latitude,
+        fromLng: originCoords.longitude,
       });
       onNavigateCompare('__dynamic__');
     }
@@ -182,12 +154,31 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
     );
   }, [searchQuery]);
 
-  const handleSuggestionPress = useCallback((key: string) => {
-    if (key === 'carte') { enterPinMode(); return; }
+  const handleSuggestionPress = useCallback(async (key: string) => {
+    if (key === 'carte') return;
+    const preset = TRIPS[key];
+    if (customDeparture && preset) {
+      const destAddress = `${preset.address}`;
+      const geocoded = await forwardGeocode(destAddress);
+      if (geocoded) {
+        closeSearch();
+        setDynamicTrip({
+          from: customDeparture.label,
+          to: preset.label,
+          label: preset.address,
+          latitude: geocoded.latitude,
+          longitude: geocoded.longitude,
+          fromLat: customDeparture.latitude,
+          fromLng: customDeparture.longitude,
+        });
+        onNavigateCompare('__dynamic__');
+        return;
+      }
+    }
     setSelectedTrip(key);
     closeSearch();
     onNavigateCompare(key);
-  }, [setSelectedTrip, onNavigateCompare, enterPinMode, closeSearch]);
+  }, [setSelectedTrip, onNavigateCompare, closeSearch, customDeparture, setDynamicTrip]);
 
   // ── Derived ──
   const initialRegion = geo.userLocation
@@ -215,29 +206,12 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
           scrollEnabled
           rotateEnabled
           pitchEnabled
-          onLongPress={pin.handleMapLongPress}
         >
-          {geo.userLocation && !pin.active && (
+          {geo.userLocation && (
             <Marker coordinate={geo.userLocation} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
               <View style={styles.userMarkerContainer}>
                 <Animated.View style={[styles.userMarkerPulse, pulseStyle]} />
                 <View style={styles.userMarkerDot} />
-              </View>
-            </Marker>
-          )}
-
-          {pin.active && pin.coord && (
-            <Marker
-              coordinate={pin.coord}
-              draggable
-              onDragEnd={(e) => pin.handleDragEnd(e.nativeEvent.coordinate)}
-              anchor={{ x: 0.5, y: 1 }}
-            >
-              <View style={styles.destPinContainer}>
-                <View style={styles.destPinHead}>
-                  <Text style={styles.destPinIcon}>📍</Text>
-                </View>
-                <View style={styles.destPinStem} />
               </View>
             </Marker>
           )}
@@ -256,46 +230,10 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
             {geo.loading ? <ActivityIndicator size="small" color={Colors.teal} /> : <Text style={styles.locateBtnIcon}>◎</Text>}
           </GlassView>
         </Pressable>
-
-        {/* Pin mode banner */}
-        {pin.active && pin.address && (
-          <Animated.View entering={FadeIn.duration(250)} style={[styles.pinBanner, { top: insets.top + 64 }]}>
-            <GlassView variant="panel" style={styles.pinBannerGlass}>
-              <View style={styles.pinBannerContent}>
-                <View style={styles.pinBannerInfo}>
-                  {pin.loading ? (
-                    <ActivityIndicator size="small" color={Colors.teal} />
-                  ) : (
-                    <>
-                      <Text style={styles.pinBannerLabel} numberOfLines={1}>{pin.address.label}</Text>
-                      <Text style={styles.pinBannerSub} numberOfLines={1}>{pin.address.sub}</Text>
-                    </>
-                  )}
-                </View>
-                <Pressable style={styles.pinBannerConfirm} onPress={confirmPinDestination}>
-                  <Text style={styles.pinBannerConfirmText}>Comparer</Text>
-                </Pressable>
-                <Pressable style={styles.pinBannerCancel} onPress={pin.exit}>
-                  <Text style={styles.pinBannerCancelText}>✕</Text>
-                </Pressable>
-              </View>
-            </GlassView>
-          </Animated.View>
-        )}
-
-        {/* Pin mode instruction */}
-        {pin.active && !pin.address && (
-          <Animated.View entering={FadeIn.duration(300)} style={[styles.pinInstruction, { top: insets.top + 64 }]}>
-            <GlassView variant="panel" style={styles.pinInstructionGlass}>
-              <Text style={styles.pinInstructionText}>Appuyez longuement sur la carte pour placer un pin</Text>
-            </GlassView>
-          </Animated.View>
-        )}
       </View>
 
       {/* ═══ BOTTOM SHEET ═══ */}
-      {!pin.active && !searchVisible && (
-        <GestureDetector gesture={sheetSwipeUp}>
+      {!searchVisible && (
         <View style={[styles.sheet, { paddingBottom: insets.bottom || 12 }]}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetContent}>
@@ -325,7 +263,6 @@ export function HomeScreen({ onOpenDrawer, onNavigateCompare, onNavigateMapPin }
             })}
           </View>
         </View>
-        </GestureDetector>
       )}
 
       {/* ═══ SEARCH OVERLAY ═══ */}
@@ -480,12 +417,6 @@ const styles = StyleSheet.create({
   userMarkerPulse: { position: 'absolute', width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,122,255,0.12)' },
   userMarkerDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#007AFF', borderWidth: 4, borderColor: '#FFF', shadowColor: '#007AFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 6 },
 
-  // Dest pin
-  destPinContainer: { alignItems: 'center' },
-  destPinHead: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.teal, alignItems: 'center', justifyContent: 'center', shadowColor: Colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },
-  destPinIcon: { fontSize: 20 },
-  destPinStem: { width: 3, height: 14, backgroundColor: Colors.teal, borderBottomLeftRadius: 2, borderBottomRightRadius: 2 },
-
   // Map buttons
   hamburger: { position: 'absolute', left: 16, zIndex: 10 },
   hamburgerGlass: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
@@ -493,23 +424,6 @@ const styles = StyleSheet.create({
   locateBtn: { position: 'absolute', right: 16, bottom: 24, zIndex: 10 },
   locateBtnGlass: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   locateBtnIcon: { fontSize: 22, color: Colors.teal },
-
-  // Pin banner
-  pinBanner: { position: 'absolute', left: 16, right: 16, zIndex: 10 },
-  pinBannerGlass: { borderRadius: 20 },
-  pinBannerContent: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
-  pinBannerInfo: { flex: 1, gap: 2 },
-  pinBannerLabel: { fontSize: 15, fontWeight: '700', color: Colors.navy },
-  pinBannerSub: { fontSize: 12, color: Colors.g500 },
-  pinBannerConfirm: { backgroundColor: Colors.teal, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 },
-  pinBannerConfirmText: { color: Colors.white, fontSize: 13, fontWeight: '700' },
-  pinBannerCancel: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.g100, alignItems: 'center', justifyContent: 'center' },
-  pinBannerCancelText: { fontSize: 16, color: Colors.g600, fontWeight: '600' },
-
-  // Pin instruction
-  pinInstruction: { position: 'absolute', left: 16, right: 16, zIndex: 10 },
-  pinInstructionGlass: { borderRadius: 16 },
-  pinInstructionText: { fontSize: 14, fontWeight: '500', color: Colors.navy, textAlign: 'center', padding: 14 },
 
   // Sheet
   sheet: { backgroundColor: 'rgba(248,252,252,0.97)', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 10, ...Shadows.elevated },

@@ -8,14 +8,13 @@ import {
   Pressable,
   Dimensions,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withDelay,
-  withSpring,
   Easing,
   FadeIn,
   SlideInUp,
@@ -61,9 +60,10 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [catDropOpen, setCatDropOpen] = useState(false);
+  const [toastError, setToastError] = useState<string | null>(null);
 
   // ── Hooks ──
-  const { trip, refreshing, refresh } = useRides(tripKey);
+  const { trip, refreshing, refresh, error } = useRides(tripKey);
   const sheetGesture = useSheetGesture(expanded, setExpanded);
 
   // ── Store selectors ──
@@ -102,21 +102,19 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
     headerOpacity.value = 0;
     sheetTranslate.value = 300;
 
-    setTimeout(() => {
+    const fitTimer = setTimeout(() => {
       mapRef.current?.fitToCoordinates([ORIGIN, destCoord], {
         edgePadding: { top: 140, right: 60, bottom: SCREEN_HEIGHT * 0.45, left: 60 },
         animated: true,
       });
     }, 400);
 
-    routeOpacity.value = withDelay(600, withTiming(1, { duration: 800, easing: Easing.out(Easing.cubic) }));
-    headerOpacity.value = withDelay(300, withTiming(1, { duration: 500 }));
+    routeOpacity.value = withTiming(1, { duration: 250, easing: Easing.out(Easing.cubic) });
+    headerOpacity.value = withTiming(1, { duration: 250 });
+    sheetTranslate.value = withTiming(0, { duration: 250 });
+    setLoading(false);
 
-    const timer = setTimeout(() => {
-      setLoading(false);
-      sheetTranslate.value = withSpring(0, { damping: 18, stiffness: 120 });
-    }, 1600);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(fitTimer); };
   }, [tripKey]);
 
   const routeStyle = useAnimatedStyle(() => ({ opacity: routeOpacity.value }));
@@ -148,7 +146,67 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
     }
   }, [categoryFilter]);
 
-  if (!trip) return null;
+  // Mirror refresh errors to toast (only when trip already loaded)
+  useEffect(() => {
+    if (error && trip) {
+      setToastError(error);
+      const t = setTimeout(() => setToastError(null), 5000);
+      return () => clearTimeout(t);
+    } else {
+      setToastError(null);
+    }
+  }, [error, trip]);
+
+  if (error && !trip) {
+    return (
+      <View style={styles.container}>
+        <Animated.View style={[styles.floatingHeader, { top: insets.top + 8 }, headerAnimStyle]}>
+          <GlassView variant="panel" style={styles.floatingHeaderGlass}>
+            <Pressable onPress={onBack} style={styles.backBtn}>
+              <Text style={styles.backText}>←</Text>
+            </Pressable>
+            <Text style={styles.headerRouteText}>Erreur</Text>
+          </GlassView>
+        </Animated.View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable onPress={refresh} style={styles.errorRetryBtn}>
+            <Text style={styles.errorRetryText}>Réessayer</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  if (!trip) {
+    return (
+      <View style={styles.container}>
+        <MapView
+          style={StyleSheet.absoluteFillObject}
+          initialRegion={{
+            latitude: (ORIGIN.latitude + destCoord.latitude) / 2,
+            longitude: (ORIGIN.longitude + destCoord.longitude) / 2,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
+          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+          scrollEnabled={false}
+          zoomEnabled={false}
+        />
+        <Animated.View style={[styles.floatingHeader, { top: insets.top + 8 }]}>
+          <GlassView variant="panel" style={styles.floatingHeaderGlass}>
+            <Pressable onPress={onBack} style={styles.backBtn}>
+              <Text style={styles.backText}>←</Text>
+            </Pressable>
+            <Text style={styles.headerRouteText}>Chargement des prix…</Text>
+          </GlassView>
+        </Animated.View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.teal} />
+        </View>
+      </View>
+    );
+  }
 
   const sheetMaxHeight = expanded ? SCREEN_HEIGHT - insets.top - 100 : SCREEN_HEIGHT * 0.52;
 
@@ -212,6 +270,14 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
         </GlassView>
       </Animated.View>
 
+      {/* ═══ REFRESH ERROR TOAST ═══ */}
+      {toastError && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{toastError}</Text>
+          <Pressable onPress={refresh}><Text style={styles.errorBannerRetry}>Réessayer</Text></Pressable>
+        </View>
+      )}
+
       {/* ═══ BOTTOM SHEET ═══ */}
       {!loading && (
         <Animated.View style={[styles.bottomSheet, expanded ? { height: sheetMaxHeight } : { maxHeight: sheetMaxHeight }, sheetStyle]}>
@@ -222,9 +288,8 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
             </Animated.View>
           </GestureDetector>
 
-          {/* Sort tabs — only when expanded */}
-          {expanded && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortBar} style={styles.sortBarScroll}>
+          {/* Sort tabs */}
+          <View style={styles.sortBar}>
               <Pressable
                 onPress={() => setCatDropOpen((o) => !o)}
                 style={[styles.sortChip, categoryFilter !== 'Tous' && { borderColor: Colors.teal, borderWidth: 2, backgroundColor: Colors.tealSoft }]}
@@ -249,11 +314,10 @@ export function CompareScreen({ tripKey, onBack, onBookRide }: CompareScreenProp
               <Pressable onPress={refresh} style={styles.sortRefreshBtn} disabled={refreshing}>
                 <Text style={[styles.sortRefreshIcon, refreshing && { opacity: 0.4 }]}>{refreshing ? '...' : '↻'}</Text>
               </Pressable>
-            </ScrollView>
-          )}
+            </View>
 
           {/* Category dropdown */}
-          {expanded && catDropOpen && (
+          {catDropOpen && expanded && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catDropdown} style={styles.catDropdownScroll}>
               {CATEGORIES.map((c) => (
                 <Pressable
@@ -362,8 +426,7 @@ const styles = StyleSheet.create({
   dragHandleBar: { width: 38, height: 4.5, backgroundColor: Colors.g300, borderRadius: 3 },
 
   // Sort bar
-  sortBarScroll: { flexShrink: 0, flexGrow: 0 },
-  sortBar: { flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingBottom: 8 },
+  sortBar: { flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingBottom: 8, flexShrink: 0 },
   sortChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 13, paddingVertical: 9, borderRadius: 16, borderWidth: 1.5, borderColor: Colors.g200, backgroundColor: 'rgba(255,255,255,0.82)' },
   sortChipIcon: { fontSize: 13 },
   sortChipLabel: { fontSize: 12, fontWeight: '700', color: Colors.g500 },
@@ -399,4 +462,18 @@ const styles = StyleSheet.create({
   },
   ctaText: { fontSize: 15, fontWeight: '700', color: Colors.white },
   ctaPrice: { fontSize: 15, fontWeight: '800', color: Colors.white },
+
+  // Loading state
+  loadingContainer: { position: 'absolute', left: 0, right: 0, bottom: 100, alignItems: 'center', justifyContent: 'center' },
+
+  // Error screen
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
+  errorText: { fontSize: 16, fontWeight: '600', color: Colors.navy, textAlign: 'center', marginBottom: 24 },
+  errorRetryBtn: { paddingHorizontal: 28, paddingVertical: 12, backgroundColor: Colors.teal, borderRadius: 12 },
+  errorRetryText: { fontSize: 14, fontWeight: '700', color: Colors.white },
+
+  // Refresh error toast banner
+  errorBanner: { position: 'absolute', top: 100, left: 14, right: 14, backgroundColor: '#FEE2E2', borderColor: '#FCA5A5', borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 15 },
+  errorBannerText: { flex: 1, fontSize: 13, color: '#B91C1C', fontWeight: '600' },
+  errorBannerRetry: { fontSize: 13, color: '#B91C1C', fontWeight: '800', textDecorationLine: 'underline', marginLeft: 10 },
 });

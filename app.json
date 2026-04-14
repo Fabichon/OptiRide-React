@@ -17,12 +17,19 @@
         {
           "locationAlwaysAndWhenInUsePermission": "OptiRide a besoin de votre position pour comparer les VTC autour de vous."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "OptiRide a besoin de votre position pour comparer les VTC autour de vous."
+        "NSLocationWhenInUseUsageDescription": "OptiRide a besoin de votre position pour comparer les VTC autour de vous.",
+        "LSApplicationQueriesSchemes": [
+          "uber",
+          "bolt",
+          "heetch",
+          "freenow"
+        ]
       }
     },
     "android": {

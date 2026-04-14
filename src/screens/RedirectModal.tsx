@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import { ProviderAvatar } from '../components/ui/ProviderAvatar';
 import { Colors, Shadows } from '../constants';
-import { useAppStore } from '../store/useAppStore';
 import { openOrInstallProvider } from '../services/deepLink';
 import type { Ride } from '../types';
 
@@ -13,21 +12,22 @@ interface RedirectModalProps {
 }
 
 export function RedirectModal({ visible, ride, onClose }: RedirectModalProps) {
-  const [dontShow, setDontShow] = useState(false);
-  const setDontShowRedirect = useAppStore((s) => s.setDontShowRedirect);
+  const [busy, setBusy] = useState(false);
 
   if (!ride) return null;
 
   const isDirect = !ride.external;
 
   const handleConfirm = async () => {
-    if (dontShow) {
-      setDontShowRedirect(ride.provider.toLowerCase());
+    try {
+      setBusy(true);
+      if (ride.external) {
+        await openOrInstallProvider(ride.provider.toLowerCase().replace(/\s+/g, ''));
+      }
+      onClose();
+    } finally {
+      setBusy(false);
     }
-    if (ride.external) {
-      await openOrInstallProvider(ride.provider.toLowerCase().replace(' ', ''));
-    }
-    onClose();
   };
 
   return (
@@ -66,19 +66,8 @@ export function RedirectModal({ visible, ride, onClose }: RedirectModalProps) {
             </View>
           </View>
 
-          {/* Don't show again */}
-          <Pressable
-            style={styles.checkRow}
-            onPress={() => setDontShow(!dontShow)}
-          >
-            <View style={[styles.checkbox, dontShow && styles.checkboxChecked]}>
-              {dontShow && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <Text style={styles.checkLabel}>Ne plus afficher pour {ride.provider}</Text>
-          </Pressable>
-
           {/* Buttons */}
-          <Pressable style={styles.confirmBtn} onPress={handleConfirm}>
+          <Pressable style={[styles.confirmBtn, busy && { opacity: 0.5 }]} onPress={handleConfirm} disabled={busy}>
             <Text style={styles.confirmText}>
               {isDirect ? 'Confirmer la réservation' : `Ouvrir ${ride.provider}`}
             </Text>
@@ -141,35 +130,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: Colors.teal,
-  },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 18,
-    alignSelf: 'flex-start',
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: Colors.g300,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: Colors.teal,
-    borderColor: Colors.teal,
-  },
-  checkmark: {
-    color: Colors.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  checkLabel: {
-    fontSize: 13,
-    color: Colors.g500,
   },
   confirmBtn: {
     width: '100%',
